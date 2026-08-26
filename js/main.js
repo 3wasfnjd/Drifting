@@ -12,10 +12,13 @@ import { SmokeTrails } from './Particles.js';
 import { DriftMarks } from './DriftMarks.js';
 import { GameAudio } from './Audio.js';
 import { LapTimer } from './LapTimer.js';
+import { ARButton } from 'three/addons/webxr/ARButton.js';
 import { ColorMapGLTFLoader } from './Loader.js';
 
 
-const renderer = new THREE.WebGLRenderer( { antialias: true, outputBufferType: THREE.HalfFloatType } );
+const renderer = new THREE.WebGLRenderer( { antialias: true, outputBufferType: THREE.HalfFloatType, alpha: true } );
+renderer.xr.enabled = true;
+document.body.appendChild( ARButton.createButton( renderer, { requiredFeatures: [ 'hit-test' ] } ) );
 renderer.setSize( window.innerWidth, window.innerHeight );
 renderer.setPixelRatio( window.devicePixelRatio );
 renderer.shadowMap.enabled = true;
@@ -253,9 +256,24 @@ async function init() {
 
 	const timer = new THREE.Timer();
 
-	function animate() {
+	let originalBackground = scene.background;
+	let originalFog = scene.fog;
 
-		requestAnimationFrame( animate );
+	renderer.xr.addEventListener( 'sessionstart', () => {
+
+		scene.background = null;
+		scene.fog = null;
+
+	} );
+
+	renderer.xr.addEventListener( 'sessionend', () => {
+
+		scene.background = originalBackground;
+		scene.fog = originalFog;
+
+	} );
+
+	renderer.setAnimationLoop( () => {
 
 		timer.update();
 		const dt = Math.min( timer.getDelta(), 1 / 30 );
@@ -274,7 +292,13 @@ async function init() {
 
 		const mv = vehicle.modelVelocity;
 		_camLead.set( 0, 0, 1 ).applyQuaternion( vehicle.container.quaternion ).multiplyScalar( Math.sqrt( mv.x * mv.x + mv.z * mv.z ) );
-		cam.update( dt, vehicle.spherePos, _camLead );
+
+		if ( ! renderer.xr.isPresenting ) {
+
+			cam.update( dt, vehicle.spherePos, _camLead );
+
+		}
+
 		particles.update( dt, vehicle );
 		driftMarks.update( dt, vehicle );
 		audio.update( dt, vehicle.linearSpeed / MAX_SPEED, input.z, vehicle.driftIntensity );
@@ -282,11 +306,9 @@ async function init() {
 		const hasInput = input.touchActive || Math.abs( input.x ) > 0.05 || Math.abs( input.z ) > 0.05;
 		lapTimer.update( dt, vehicle.spherePos, hasInput );
 
-		renderer.render( scene, cam.camera );
+		renderer.render( scene, renderer.xr.isPresenting ? renderer.xr.getCamera() : cam.camera );
 
-	}
-
-	animate();
+	} );
 
 }
 
