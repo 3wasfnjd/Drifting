@@ -218,10 +218,86 @@ async function init() {
 
 	}
 
+	const arGroup = new THREE.Group();
+	scene.add( arGroup );
+
+	// Move track objects to arGroup
+	const toMove = [];
+	scene.children.forEach( ( child ) => {
+
+		if ( child !== dirLight && child !== hemiLight && child !== arGroup ) {
+
+			toMove.push( child );
+
+		}
+
+	} );
+	toMove.forEach( ( child ) => arGroup.add( child ) );
+
 	const vehicleGroup = vehicle.init( models[ 'vehicle-truck-yellow' ] );
-	scene.add( vehicleGroup );
+	arGroup.add( vehicleGroup );
 
 	dirLight.target = vehicleGroup;
+
+	// AR Reticle for surface detection
+	const reticleGeom = new THREE.RingGeometry( 0.15, 0.2, 32 ).rotateX( - Math.PI / 2 );
+	const reticleMat = new THREE.MeshBasicMaterial( { color: 0x00ff00, side: THREE.DoubleSide } );
+	const reticle = new THREE.Mesh( reticleGeom, reticleMat );
+	reticle.matrixAutoUpdate = false;
+	reticle.visible = false;
+	scene.add( reticle );
+
+	let hitTestSource = null;
+	let hitTestSourceRequested = false;
+
+	// Scale and Placement Controls for AR
+	let arScale = 0.1;
+	arGroup.scale.setScalar( 1.0 ); // Default 1.0 in standard mode
+
+	// Add AR UI overlay for scaling and placing
+	const arControlsDiv = document.createElement( 'div' );
+	arControlsDiv.style.cssText = `
+		position: absolute; bottom: 80px; left: 50%; transform: translateX(-50%);
+		display: none; gap: 10px; z-index: 999;
+	`;
+	arControlsDiv.innerHTML = `
+		<button id="ar-place-btn" style="padding: 10px 16px; font-size: 14px; border-radius: 20px; border: none; background: rgba(0,255,100,0.85); color: #000; font-weight: bold;">Place Track</button>
+		<button id="ar-scale-up" style="padding: 10px 16px; font-size: 14px; border-radius: 20px; border: none; background: rgba(255,255,255,0.85); font-weight: bold;">Scale +</button>
+		<button id="ar-scale-down" style="padding: 10px 16px; font-size: 14px; border-radius: 20px; border: none; background: rgba(255,255,255,0.85); font-weight: bold;">Scale -</button>
+	`;
+	document.body.appendChild( arControlsDiv );
+
+	document.getElementById( 'ar-place-btn' ).addEventListener( 'click', () => {
+
+		if ( reticle.visible ) {
+
+			arGroup.position.setFromMatrixPosition( reticle.matrix );
+
+		}
+
+	} );
+
+	document.getElementById( 'ar-scale-up' ).addEventListener( 'click', () => {
+
+		if ( renderer.xr.isPresenting ) {
+
+			arScale = Math.min( arScale + 0.02, 0.5 );
+			arGroup.scale.setScalar( arScale );
+
+		}
+
+	} );
+
+	document.getElementById( 'ar-scale-down' ).addEventListener( 'click', () => {
+
+		if ( renderer.xr.isPresenting ) {
+
+			arScale = Math.max( arScale - 0.02, 0.02 );
+			arGroup.scale.setScalar( arScale );
+
+		}
+
+	} );
 
 	const cam = new Camera();
 	scene.add( cam.debug );
@@ -263,6 +339,8 @@ async function init() {
 
 		scene.background = null;
 		scene.fog = null;
+		arGroup.scale.setScalar( arScale );
+		arControlsDiv.style.display = 'flex';
 
 	} );
 
@@ -270,10 +348,66 @@ async function init() {
 
 		scene.background = originalBackground;
 		scene.fog = originalFog;
+		arGroup.scale.setScalar( 1.0 );
+		arGroup.position.set( 0, 0, 0 );
+		arControlsDiv.style.display = 'none';
+		hitTestSourceRequested = false;
+		hitTestSource = null;
+		reticle.visible = false;
 
 	} );
 
-	renderer.setAnimationLoop( () => {
+	renderer.setAnimationLoop( ( timestamp, frame ) => {
+
+		if ( renderer.xr.isPresenting && frame ) {
+
+			const session = renderer.xr.getSession();
+
+			if ( ! hitTestSourceRequested ) {
+
+				session.requestReferenceSpace( 'viewer' ).then( ( referenceSpace ) => {
+
+					session.requestHitTestSource( { space: referenceSpace } ).then( ( source ) => {
+
+						hitTestSource = source;
+
+					} );
+
+				} );
+
+				session.addEventListener( 'end', () => {
+
+					hitTestSourceRequested = false;
+					hitTestSource = null;
+
+				} );
+
+				hitTestSourceRequested = true;
+
+			}
+
+			if ( hitTestSource ) {
+
+				const referenceSpace = renderer.xr.getReferenceSpace();
+				const hitTestResults = frame.getHitTestResults( hitTestSource );
+
+				if ( hitTestResults.length > 0 ) {
+
+					const hit = hitTestResults[ 0 ];
+					const pose = hit.getPose( referenceSpace );
+
+					reticle.visible = true;
+					reticle.matrix.fromArray( pose.transform.matrix );
+
+				} else {
+
+					reticle.visible = false;
+
+				}
+
+			}
+
+		}
 
 		timer.update();
 		const dt = Math.min( timer.getDelta(), 1 / 30 );
