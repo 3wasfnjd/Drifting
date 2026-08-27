@@ -368,12 +368,16 @@ async function init() {
 	let originalBackground = scene.background;
 	let originalFog = scene.fog;
 
+	const arManager = new ARManager( { renderer, scene, models } );
+	arManager.setWorld( world );
+
 	renderer.xr.addEventListener( 'sessionstart', () => {
 
 		scene.background = null;
 		scene.fog = null;
 		arGroup.scale.setScalar( arScale );
 		arControlsDiv.style.display = 'flex';
+		arManager.session = renderer.xr.getSession();
 
 	} );
 
@@ -391,6 +395,9 @@ async function init() {
 	} );
 
 	renderer.setAnimationLoop( ( timestamp, frame ) => {
+
+		timer.update();
+		const dt = Math.min( timer.getDelta(), 1 / 30 );
 
 		if ( renderer.xr.isPresenting && frame ) {
 
@@ -440,12 +447,28 @@ async function init() {
 
 			}
 
+			// Controller Thumbstick scaling support
+			const stickScale = arManager.getScaleAdjustInput();
+			if ( stickScale !== 0 ) {
+
+				arScale = Math.max( 0.02, Math.min( 0.5, arScale - stickScale * dt * 0.2 ) );
+				arGroup.scale.setScalar( arScale );
+
+			}
+
 		}
 
-		timer.update();
-		const dt = Math.min( timer.getDelta(), 1 / 30 );
+		let input = controls.update();
+		if ( renderer.xr.isPresenting ) {
 
-		const input = controls.update();
+			const arDrive = arManager.getDriveInput();
+			if ( Math.abs( arDrive.x ) > 0.05 || Math.abs( arDrive.z ) > 0.05 ) {
+
+				input = arDrive;
+
+			}
+
+		}
 
 		updateWorld( world, contactListener, dt );
 
