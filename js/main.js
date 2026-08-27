@@ -12,10 +12,46 @@ import { SmokeTrails } from './Particles.js';
 import { DriftMarks } from './DriftMarks.js';
 import { GameAudio } from './Audio.js';
 import { LapTimer } from './LapTimer.js';
+import { ARButton } from 'three/addons/webxr/ARButton.js';
+import { VRButton } from 'three/addons/webxr/VRButton.js';
 import { ColorMapGLTFLoader } from './Loader.js';
 
 
-const renderer = new THREE.WebGLRenderer( { antialias: true, outputBufferType: THREE.HalfFloatType } );
+const renderer = new THREE.WebGLRenderer( { antialias: true, outputBufferType: THREE.HalfFloatType, alpha: true } );
+renderer.xr.enabled = true;
+
+// Custom style to ensure WebXR buttons are visible on top of UI without overlapping
+const xrBtnStyle = document.createElement( 'style' );
+xrBtnStyle.textContent = `
+	#ARButton, #VRButton {
+		position: absolute !important;
+		bottom: 20px !important;
+		z-index: 10000 !important;
+		padding: 12px 24px !important;
+		font-size: 16px !important;
+		font-weight: bold !important;
+		border-radius: 30px !important;
+		box-shadow: 0 4px 15px rgba(0,0,0,0.3) !important;
+	}
+	#ARButton {
+		left: calc(50% - 90px) !important;
+		transform: translateX(-50%) !important;
+	}
+	#VRButton {
+		left: calc(50% + 90px) !important;
+		transform: translateX(-50%) !important;
+	}
+`;
+document.head.appendChild( xrBtnStyle );
+
+const arBtn = ARButton.createButton( renderer, {
+	optionalFeatures: [ 'hit-test', 'local-floor', 'dom-overlay' ],
+	domOverlay: { root: document.body }
+} );
+document.body.appendChild( arBtn );
+
+const vrBtn = VRButton.createButton( renderer );
+document.body.appendChild( vrBtn );
 renderer.setSize( window.innerWidth, window.innerHeight );
 renderer.setPixelRatio( window.devicePixelRatio );
 renderer.shadowMap.enabled = true;
@@ -215,10 +251,86 @@ async function init() {
 
 	}
 
+	const arGroup = new THREE.Group();
+	scene.add( arGroup );
+
+	// Move track objects to arGroup
+	const toMove = [];
+	scene.children.forEach( ( child ) => {
+
+		if ( child !== dirLight && child !== hemiLight && child !== arGroup ) {
+
+			toMove.push( child );
+
+		}
+
+	} );
+	toMove.forEach( ( child ) => arGroup.add( child ) );
+
 	const vehicleGroup = vehicle.init( models[ 'vehicle-truck-yellow' ] );
-	scene.add( vehicleGroup );
+	arGroup.add( vehicleGroup );
 
 	dirLight.target = vehicleGroup;
+
+	// AR Reticle for surface detection
+	const reticleGeom = new THREE.RingGeometry( 0.15, 0.2, 32 ).rotateX( - Math.PI / 2 );
+	const reticleMat = new THREE.MeshBasicMaterial( { color: 0x00ff00, side: THREE.DoubleSide } );
+	const reticle = new THREE.Mesh( reticleGeom, reticleMat );
+	reticle.matrixAutoUpdate = false;
+	reticle.visible = false;
+	scene.add( reticle );
+
+	let hitTestSource = null;
+	let hitTestSourceRequested = false;
+
+	// Scale and Placement Controls for AR
+	let arScale = 0.1;
+	arGroup.scale.setScalar( 1.0 ); // Default 1.0 in standard mode
+
+	// Add AR UI overlay for scaling and placing
+	const arControlsDiv = document.createElement( 'div' );
+	arControlsDiv.style.cssText = `
+		position: absolute; bottom: 80px; left: 50%; transform: translateX(-50%);
+		display: none; gap: 10px; z-index: 999;
+	`;
+	arControlsDiv.innerHTML = `
+		<button id="ar-place-btn" style="padding: 10px 16px; font-size: 14px; border-radius: 20px; border: none; background: rgba(0,255,100,0.85); color: #000; font-weight: bold;">Place Track</button>
+		<button id="ar-scale-up" style="padding: 10px 16px; font-size: 14px; border-radius: 20px; border: none; background: rgba(255,255,255,0.85); font-weight: bold;">Scale +</button>
+		<button id="ar-scale-down" style="padding: 10px 16px; font-size: 14px; border-radius: 20px; border: none; background: rgba(255,255,255,0.85); font-weight: bold;">Scale -</button>
+	`;
+	document.body.appendChild( arControlsDiv );
+
+	document.getElementById( 'ar-place-btn' ).addEventListener( 'click', () => {
+
+		if ( reticle.visible ) {
+
+			arGroup.position.setFromMatrixPosition( reticle.matrix );
+
+		}
+
+	} );
+
+	document.getElementById( 'ar-scale-up' ).addEventListener( 'click', () => {
+
+		if ( renderer.xr.isPresenting ) {
+
+			arScale = Math.min( arScale + 0.02, 0.5 );
+			arGroup.scale.setScalar( arScale );
+
+		}
+
+	} );
+
+	document.getElementById( 'ar-scale-down' ).addEventListener( 'click', () => {
+
+		if ( renderer.xr.isPresenting ) {
+
+			arScale = Math.max( arScale - 0.02, 0.02 );
+			arGroup.scale.setScalar( arScale );
+
+		}
+
+	} );
 
 	const cam = new Camera();
 	scene.add( cam.debug );
@@ -253,9 +365,82 @@ async function init() {
 
 	const timer = new THREE.Timer();
 
-	function animate() {
+	let originalBackground = scene.background;
+	let originalFog = scene.fog;
 
-		requestAnimationFrame( animate );
+	renderer.xr.addEventListener( 'sessionstart', () => {
+
+		scene.background = null;
+		scene.fog = null;
+		arGroup.scale.setScalar( arScale );
+		arControlsDiv.style.display = 'flex';
+
+	} );
+
+	renderer.xr.addEventListener( 'sessionend', () => {
+
+		scene.background = originalBackground;
+		scene.fog = originalFog;
+		arGroup.scale.setScalar( 1.0 );
+		arGroup.position.set( 0, 0, 0 );
+		arControlsDiv.style.display = 'none';
+		hitTestSourceRequested = false;
+		hitTestSource = null;
+		reticle.visible = false;
+
+	} );
+
+	renderer.setAnimationLoop( ( timestamp, frame ) => {
+
+		if ( renderer.xr.isPresenting && frame ) {
+
+			const session = renderer.xr.getSession();
+
+			if ( ! hitTestSourceRequested ) {
+
+				session.requestReferenceSpace( 'viewer' ).then( ( referenceSpace ) => {
+
+					session.requestHitTestSource( { space: referenceSpace } ).then( ( source ) => {
+
+						hitTestSource = source;
+
+					} );
+
+				} );
+
+				session.addEventListener( 'end', () => {
+
+					hitTestSourceRequested = false;
+					hitTestSource = null;
+
+				} );
+
+				hitTestSourceRequested = true;
+
+			}
+
+			if ( hitTestSource ) {
+
+				const referenceSpace = renderer.xr.getReferenceSpace();
+				const hitTestResults = frame.getHitTestResults( hitTestSource );
+
+				if ( hitTestResults.length > 0 ) {
+
+					const hit = hitTestResults[ 0 ];
+					const pose = hit.getPose( referenceSpace );
+
+					reticle.visible = true;
+					reticle.matrix.fromArray( pose.transform.matrix );
+
+				} else {
+
+					reticle.visible = false;
+
+				}
+
+			}
+
+		}
 
 		timer.update();
 		const dt = Math.min( timer.getDelta(), 1 / 30 );
@@ -274,7 +459,13 @@ async function init() {
 
 		const mv = vehicle.modelVelocity;
 		_camLead.set( 0, 0, 1 ).applyQuaternion( vehicle.container.quaternion ).multiplyScalar( Math.sqrt( mv.x * mv.x + mv.z * mv.z ) );
-		cam.update( dt, vehicle.spherePos, _camLead );
+
+		if ( ! renderer.xr.isPresenting ) {
+
+			cam.update( dt, vehicle.spherePos, _camLead );
+
+		}
+
 		particles.update( dt, vehicle );
 		driftMarks.update( dt, vehicle );
 		audio.update( dt, vehicle.linearSpeed / MAX_SPEED, input.z, vehicle.driftIntensity );
@@ -282,11 +473,9 @@ async function init() {
 		const hasInput = input.touchActive || Math.abs( input.x ) > 0.05 || Math.abs( input.z ) > 0.05;
 		lapTimer.update( dt, vehicle.spherePos, hasInput );
 
-		renderer.render( scene, cam.camera );
+		renderer.render( scene, renderer.xr.isPresenting ? renderer.xr.getCamera() : cam.camera );
 
-	}
-
-	animate();
+	} );
 
 }
 
