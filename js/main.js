@@ -13,12 +13,36 @@ import { DriftMarks } from './DriftMarks.js';
 import { GameAudio } from './Audio.js';
 import { LapTimer } from './LapTimer.js';
 import { ARButton } from 'three/addons/webxr/ARButton.js';
+import { VRButton } from 'three/addons/webxr/VRButton.js';
 import { ColorMapGLTFLoader } from './Loader.js';
 
 
 const renderer = new THREE.WebGLRenderer( { antialias: true, outputBufferType: THREE.HalfFloatType, alpha: true } );
 renderer.xr.enabled = true;
-document.body.appendChild( ARButton.createButton( renderer, { requiredFeatures: [ 'hit-test' ] } ) );
+
+// Custom style to ensure WebXR buttons are visible on top of UI
+const xrBtnStyle = document.createElement( 'style' );
+xrBtnStyle.textContent = `
+	#ARButton, #VRButton {
+		position: absolute !important;
+		bottom: 20px !important;
+		left: 50% !important;
+		transform: translateX(-50%) !important;
+		z-index: 10000 !important;
+		padding: 12px 24px !important;
+		font-size: 16px !important;
+		font-weight: bold !important;
+		border-radius: 30px !important;
+		box-shadow: 0 4px 15px rgba(0,0,0,0.3) !important;
+	}
+`;
+document.head.appendChild( xrBtnStyle );
+
+const arBtn = ARButton.createButton( renderer, {
+	optionalFeatures: [ 'hit-test', 'local-floor', 'dom-overlay' ],
+	domOverlay: { root: document.body }
+} );
+document.body.appendChild( arBtn );
 renderer.setSize( window.innerWidth, window.innerHeight );
 renderer.setPixelRatio( window.devicePixelRatio );
 renderer.shadowMap.enabled = true;
