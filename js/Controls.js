@@ -176,7 +176,7 @@ export class Controls {
 		if ( this.keys[ 'KeyW' ] || this.keys[ 'ArrowUp' ] || this.btnUp ) z += 1;
 		if ( this.keys[ 'KeyS' ] || this.keys[ 'ArrowDown' ] || this.btnDown ) z -= 1;
 
-		// Gamepad
+		// Gamepad & Meta Quest Controllers
 
 		const gamepads = navigator.getGamepads();
 
@@ -184,15 +184,37 @@ export class Controls {
 
 			if ( ! gp ) continue;
 
-			const stickX = gp.axes[ 0 ];
+			// Check left/right thumbstick X-axis for steering (axes[0] or axes[2])
+			const stickX1 = gp.axes[ 0 ] || 0;
+			const stickX2 = gp.axes[ 2 ] || 0;
+			const stickX = Math.abs( stickX1 ) > Math.abs( stickX2 ) ? stickX1 : stickX2;
+
 			if ( Math.abs( stickX ) > 0.15 ) x = stickX;
 
-			const rt = gp.buttons[ 7 ] ? gp.buttons[ 7 ].value : 0;
-			const lt = gp.buttons[ 6 ] ? gp.buttons[ 6 ].value : 0;
+			// Check Triggers & Grips (buttons 0, 1, 6, 7) or thumbstick Y-axis for acceleration/reverse
+			const triggerR = gp.buttons[ 7 ] ? gp.buttons[ 7 ].value : ( gp.buttons[ 0 ] ? gp.buttons[ 0 ].value : 0 );
+			const triggerL = gp.buttons[ 6 ] ? gp.buttons[ 6 ].value : ( gp.buttons[ 1 ] ? gp.buttons[ 1 ].value : 0 );
 
-			if ( rt > 0.1 || lt > 0.1 ) z = rt - lt;
+			if ( triggerR > 0.1 || triggerL > 0.1 ) {
 
-			break;
+				z = triggerR - triggerL;
+
+			} else {
+
+				// Fallback to Y-axis of thumbstick (axes[1] or axes[3])
+				const stickY1 = gp.axes[ 1 ] || 0;
+				const stickY2 = gp.axes[ 3 ] || 0;
+				const stickY = Math.abs( stickY1 ) > Math.abs( stickY2 ) ? stickY1 : stickY2;
+
+				if ( Math.abs( stickY ) > 0.15 ) {
+
+					z = - stickY;
+
+				}
+
+			}
+
+			if ( Math.abs( x ) > 0.05 || Math.abs( z ) > 0.05 ) break;
 
 		}
 
