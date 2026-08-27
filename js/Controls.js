@@ -100,6 +100,7 @@ export class Controls {
 			el.addEventListener( 'pointerdown', start );
 			el.addEventListener( 'pointerup', end );
 			el.addEventListener( 'pointercancel', end );
+			el.addEventListener( 'pointerleave', end );
 
 		};
 

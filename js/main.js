@@ -20,20 +20,26 @@ import { ColorMapGLTFLoader } from './Loader.js';
 const renderer = new THREE.WebGLRenderer( { antialias: true, outputBufferType: THREE.HalfFloatType, alpha: true } );
 renderer.xr.enabled = true;
 
-// Custom style to ensure WebXR buttons are visible on top of UI
+// Custom style to ensure WebXR buttons are visible on top of UI without overlapping
 const xrBtnStyle = document.createElement( 'style' );
 xrBtnStyle.textContent = `
 	#ARButton, #VRButton {
 		position: absolute !important;
 		bottom: 20px !important;
-		left: 50% !important;
-		transform: translateX(-50%) !important;
 		z-index: 10000 !important;
 		padding: 12px 24px !important;
 		font-size: 16px !important;
 		font-weight: bold !important;
 		border-radius: 30px !important;
 		box-shadow: 0 4px 15px rgba(0,0,0,0.3) !important;
+	}
+	#ARButton {
+		left: calc(50% - 90px) !important;
+		transform: translateX(-50%) !important;
+	}
+	#VRButton {
+		left: calc(50% + 90px) !important;
+		transform: translateX(-50%) !important;
 	}
 `;
 document.head.appendChild( xrBtnStyle );
@@ -43,6 +49,9 @@ const arBtn = ARButton.createButton( renderer, {
 	domOverlay: { root: document.body }
 } );
 document.body.appendChild( arBtn );
+
+const vrBtn = VRButton.createButton( renderer );
+document.body.appendChild( vrBtn );
 renderer.setSize( window.innerWidth, window.innerHeight );
 renderer.setPixelRatio( window.devicePixelRatio );
 renderer.shadowMap.enabled = true;
