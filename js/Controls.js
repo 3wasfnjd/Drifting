@@ -22,21 +22,12 @@ export class Controls {
 		window.addEventListener( 'keydown', ( e ) => this.keys[ e.code ] = true );
 		window.addEventListener( 'keyup', ( e ) => this.keys[ e.code ] = false );
 
-		if ( document.body ) {
-
-			this.setupTouchUI();
-
-		} else {
-
-			window.addEventListener( 'DOMContentLoaded', () => this.setupTouchUI() );
-
-		}
 
 	}
 
 	setupTouchUI() {
 
-		const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+		if ( ! ( 'ontouchstart' in window ) ) return;
 
 		const css = document.createElement( 'style' );
 		css.textContent = `
@@ -44,11 +35,6 @@ export class Controls {
 			.steer-zone { position: absolute; inset: 0; pointer-events: auto; touch-action: none; }
 			.steer-base { position: absolute; width: 140px; height: 140px; margin: -70px 0 0 -70px; border-radius: 50%; background: rgba(255,255,255,0.1); border: 2px solid rgba(255,255,255,0.2); display: none; }
 			.steer-knob { position: absolute; top: 50%; left: 50%; width: 60px; height: 60px; margin: -30px 0 0 -30px; border-radius: 50%; background: rgba(255,255,255,0.35); }
-
-			.on-screen-buttons { position: absolute; bottom: 20px; left: 20px; right: 20px; display: flex; justify-content: space-between; pointer-events: none; z-index: 101; }
-			.btn-group { display: flex; gap: 12px; pointer-events: auto; }
-			.control-btn { width: 64px; height: 64px; border-radius: 50%; background: rgba(255,255,255,0.25); border: 2px solid rgba(255,255,255,0.4); color: white; font-size: 24px; font-weight: bold; display: flex; align-items: center; justify-content: center; user-select: none; -webkit-user-select: none; touch-action: none; backdrop-filter: blur(4px); }
-			.control-btn:active { background: rgba(255,255,255,0.5); }
 		`;
 		document.head.appendChild( css );
 
@@ -66,62 +52,12 @@ export class Controls {
 		steerZone.appendChild( base );
 
 		container.appendChild( steerZone );
-
-		// On-screen D-Pad / Buttons UI
-		const buttonsOverlay = document.createElement( 'div' );
-		buttonsOverlay.className = 'on-screen-buttons';
-		if ( ! isTouch ) {
-
-			buttonsOverlay.style.display = 'none';
-
-		}
-
-		buttonsOverlay.innerHTML = `
-			<div class="btn-group">
-				<div id="btn-left" class="control-btn">◀</div>
-				<div id="btn-right" class="control-btn">▶</div>
-			</div>
-			<div class="btn-group">
-				<div id="btn-down" class="control-btn">▼</div>
-				<div id="btn-up" class="control-btn">▲</div>
-			</div>
-		`;
-		document.body.appendChild( buttonsOverlay );
 		document.body.appendChild( container );
-
-		const setupBtn = ( id, keyName ) => {
-
-			const el = document.getElementById( id );
-			if ( ! el ) return;
-			const start = ( e ) => {
-
-				e.preventDefault();
-				this[ keyName ] = true;
-
-			};
-			const end = ( e ) => {
-
-				e.preventDefault();
-				this[ keyName ] = false;
-
-			};
-			el.addEventListener( 'pointerdown', start );
-			el.addEventListener( 'pointerup', end );
-			el.addEventListener( 'pointercancel', end );
-			el.addEventListener( 'pointerleave', end );
-
-		};
-
-		setupBtn( 'btn-left', 'btnLeft' );
-		setupBtn( 'btn-right', 'btnRight' );
-		setupBtn( 'btn-up', 'btnUp' );
-		setupBtn( 'btn-down', 'btnDown' );
 
 		const steerRange = 40;
 
 		steerZone.addEventListener( 'pointerdown', ( e ) => {
 
-			if ( e.target.classList.contains( 'control-btn' ) ) return;
 			if ( this.steerPointerId !== null ) return;
 			steerZone.setPointerCapture( e.pointerId );
 			this.steerPointerId = e.pointerId;
@@ -177,12 +113,12 @@ export class Controls {
 
 		let x = 0, z = 0;
 
-		// Keyboard & On-Screen UI Buttons
+		// Keyboard
 
-		if ( this.keys[ 'KeyA' ] || this.keys[ 'ArrowLeft' ] || this.btnLeft ) x -= 1;
-		if ( this.keys[ 'KeyD' ] || this.keys[ 'ArrowRight' ] || this.btnRight ) x += 1;
-		if ( this.keys[ 'KeyW' ] || this.keys[ 'ArrowUp' ] || this.btnUp ) z += 1;
-		if ( this.keys[ 'KeyS' ] || this.keys[ 'ArrowDown' ] || this.btnDown ) z -= 1;
+		if ( this.keys[ 'KeyA' ] || this.keys[ 'ArrowLeft' ] ) x -= 1;
+		if ( this.keys[ 'KeyD' ] || this.keys[ 'ArrowRight' ] ) x += 1;
+		if ( this.keys[ 'KeyW' ] || this.keys[ 'ArrowUp' ] ) z += 1;
+		if ( this.keys[ 'KeyS' ] || this.keys[ 'ArrowDown' ] ) z -= 1;
 
 		// Gamepad & Meta Quest Controllers
 
