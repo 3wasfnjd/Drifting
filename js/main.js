@@ -327,15 +327,32 @@ async function init() {
 	`;
 	document.body.appendChild( arControlsDiv );
 
-	document.getElementById( 'ar-place-btn' ).addEventListener( 'click', () => {
+	const placeTrackOnReticle = () => {
 
 		if ( reticle.visible ) {
 
 			arGroup.position.setFromMatrixPosition( reticle.matrix );
 
+			// Also update vehicle physics body position to match placed track
+			if ( vehicle.rigidBody ) {
+
+				const pos = arGroup.position;
+				vehicle.spherePos.set( pos.x, pos.y + 0.5, pos.z );
+				vehicle.prevModelPos.set( pos.x, pos.y, pos.z );
+
+			}
+
 		}
 
-	} );
+	};
+
+	document.getElementById( 'ar-place-btn' ).addEventListener( 'click', placeTrackOnReticle );
+
+	// Listen for controller select (trigger press) in VR/AR to place track
+	const controller0 = renderer.xr.getController( 0 );
+	const controller1 = renderer.xr.getController( 1 );
+	controller0.addEventListener( 'select', placeTrackOnReticle );
+	controller1.addEventListener( 'select', placeTrackOnReticle );
 
 	document.getElementById( 'ar-scale-up' ).addEventListener( 'click', () => {
 
