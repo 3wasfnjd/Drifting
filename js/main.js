@@ -15,35 +15,36 @@ import { SmokeTrails } from './Particles.js';
 import { DriftMarks } from './DriftMarks.js';
 import { GameAudio } from './Audio.js';
 import { LapTimer } from './LapTimer.js';
-import { ARButton } from 'three/addons/webxr/ARButton.js';
-import { VRButton } from 'three/addons/webxr/VRButton.js';
+import { ARManager } from './ARManager.js';
 import { ColorMapGLTFLoader } from './Loader.js';
 
 
 const renderer = new THREE.WebGLRenderer( { antialias: true, outputBufferType: THREE.HalfFloatType, alpha: true } );
 renderer.xr.enabled = true;
 
-// Custom style to ensure WebXR buttons are visible on top of UI without overlapping
+// Styling for the single AR entry button (driven by ARManager — there is no
+// VR mode anymore, ARManager only implements immersive-ar free-roam driving).
 const xrBtnStyle = document.createElement( 'style' );
 xrBtnStyle.textContent = `
-	#ARButton, #VRButton {
+	#ARButton {
 		position: absolute !important;
 		bottom: 20px !important;
+		left: 50% !important;
+		transform: translateX(-50%) !important;
 		z-index: 10000 !important;
 		padding: 12px 24px !important;
 		font-size: 16px !important;
 		font-weight: bold !important;
 		border-radius: 30px !important;
+		border: none !important;
+		background: rgba(0, 0, 0, 0.7) !important;
+		color: #fff !important;
 		box-shadow: 0 4px 15px rgba(0,0,0,0.3) !important;
+		cursor: pointer !important;
+		display: none;
 	}
-	#ARButton {
-		left: calc(50% - 90px) !important;
-		transform: translateX(-50%) !important;
-	}
-	#VRButton {
-		left: calc(50% + 90px) !important;
-		transform: translateX(-50%) !important;
-	}
+	#ARButton[data-supported="true"] { display: block !important; }
+	#ARButton:disabled { opacity: 0.5 !important; cursor: default !important; }
 `;
 document.head.appendChild( xrBtnStyle );
 
@@ -53,11 +54,16 @@ renderer.shadowMap.enabled = true;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.0;
 
-const bloomPass = new UnrealBloomPass( new THREE.Vector2( window.innerWidth, window.innerHeight ) );
-bloomPass.strength = 0.02;
-bloomPass.radius = 0.02;
-bloomPass.threshold = 0.5;
+// The EffectComposer (and its bloom pass) is created once track/camera setup
+// finishes inside init(). Declared here so the resize handler below can reach it.
+let composer = null;
 
+// The ARManager instance (created once models/world are ready inside init())
+// and the button that starts an AR session through it. Declared here so
+// setupDOM(), which can run before init() finishes, can wire the click
+// handler immediately and just no-op until arManager exists.
+let arManager = null;
+let arEnterBtn = null;
 
 function setupDOM() {
 
@@ -67,14 +73,24 @@ function setupDOM() {
 
 	}
 
-	const arBtn = ARButton.createButton( renderer, {
-		optionalFeatures: [ 'hit-test', 'local-floor', 'dom-overlay' ],
-		domOverlay: { root: document.body }
-	} );
-	document.body.appendChild( arBtn );
+	arEnterBtn = document.createElement( 'button' );
+	arEnterBtn.id = 'ARButton';
+	arEnterBtn.textContent = 'ENTER AR';
+	arEnterBtn.disabled = true; // enabled once arManager is ready (see init())
+	arEnterBtn.addEventListener( 'click', () => {
 
-	const vrBtn = VRButton.createButton( renderer );
-	document.body.appendChild( vrBtn );
+		// Fired directly from a real click, so this carries the user-activation
+		// flag WebXR requires to grant a session — unlike a synthetic .click().
+		if ( arManager ) arManager.requestSession();
+
+	} );
+	document.body.appendChild( arEnterBtn );
+
+	ARManager.isSupported().then( ( supported ) => {
+
+		arEnterBtn.dataset.supported = supported ? 'true' : 'false';
+
+	} );
 
 }
 
@@ -109,6 +125,7 @@ scene.add( hemiLight );
 window.addEventListener( 'resize', () => {
 
 	renderer.setSize( window.innerWidth, window.innerHeight );
+	if ( composer ) composer.setSize( window.innerWidth, window.innerHeight );
 
 } );
 
@@ -211,7 +228,12 @@ async function init() {
 	scene.fog.near = groundSize * 0.4;
 	scene.fog.far = groundSize * 0.8;
 
+	const sceneChildCountBeforeTrack = scene.children.length;
 	buildTrack( scene, models, customCells );
+	// buildTrack()'s first scene.add() call is the track group itself
+	// (decorations/NPC trucks are added after it) — keep a handle on it so
+	// it can be hidden during ARManager's free-roam AR (no visual track there).
+	const trackGroup = scene.children[ sceneChildCountBeforeTrack ];
 
 	// Probes
 
@@ -325,134 +347,48 @@ async function init() {
 
 	} );
 
-	// Handle AR/VR & Play Game Buttons
-	// Auto-trigger AR/VR if specified in URL params from Main Menu (?xr=ar or ?xr=vr)
-	const xrParam = new URLSearchParams( window.location.search ).get( 'xr' );
-	if ( xrParam === 'ar' ) {
-
-		setTimeout( () => {
-
-			const arBtnEl = document.getElementById( 'ARButton' );
-			if ( arBtnEl ) arBtnEl.click();
-
-		}, 500 );
-
-	} else if ( xrParam === 'vr' ) {
-
-		setTimeout( () => {
-
-			const vrBtnEl = document.getElementById( 'VRButton' );
-			if ( vrBtnEl ) vrBtnEl.click();
-
-		}, 500 );
-
-	}
-
 	dirLight.target = vehicleGroup;
 
-	// Showcase Mirror Ground Plane with Glossy Dark Material
-	const floorGeo = new THREE.PlaneGeometry( 100, 100 );
-	const floorMat = new THREE.MeshStandardMaterial( {
-		color: 0x070d18,
-		roughness: 0.1,
-		metalness: 0.8,
-		side: THREE.DoubleSide
-	} );
-	const floorMesh = new THREE.Mesh( floorGeo, floorMat );
-	floorMesh.rotation.x = - Math.PI / 2;
-	floorMesh.position.y = - 0.05;
-	floorMesh.receiveShadow = true;
-	scene.add( floorMesh );
+	// ARManager: free-roam AR mode. Placement (surface hit-testing, the
+	// ring/arrow preview, trigger-to-confirm) and room-furniture collision
+	// are entirely its own responsibility — main.js only reacts once a spot
+	// has been confirmed, via onPlaced. Created after the arGroup reparenting
+	// above so its own objects (controllers, preview ring) stay direct
+	// children of the scene rather than being swept into arGroup.
+	arManager = new ARManager( { renderer, scene, models } );
+	arManager.setWorld( world );
 
-	// Spotlight for Showcase Lighting Effect
-	const spotLight = new THREE.SpotLight( 0x00ffcc, 5 );
-	spotLight.position.set( 0, 10, 0 );
-	spotLight.angle = Math.PI / 4;
-	spotLight.penumbra = 0.8;
-	spotLight.castShadow = true;
-	scene.add( spotLight );
+	arManager.onPlaced = ( { position, angle } ) => {
 
-	// AR Reticle for surface detection
-	const reticleGeom = new THREE.RingGeometry( 0.15, 0.2, 32 ).rotateX( - Math.PI / 2 );
-	const reticleMat = new THREE.MeshBasicMaterial( { color: 0x00ff00, side: THREE.DoubleSide } );
-	const reticle = new THREE.Mesh( reticleGeom, reticleMat );
-	reticle.matrixAutoUpdate = false;
-	reticle.visible = false;
-	scene.add( reticle );
+		trackGroup.visible = false;
 
-	let hitTestSource = null;
-	let hitTestSourceRequested = false;
+		rigidBody.setPosition( world, sphereBody, [ position.x, position.y, position.z ], false );
+		rigidBody.setLinearVelocity( world, sphereBody, [ 0, 0, 0 ] );
+		rigidBody.setAngularVelocity( world, sphereBody, [ 0, 0, 0 ] );
 
-	// Scale and Placement Controls for AR
-	let arScale = 0.1;
-	arGroup.scale.setScalar( 1.0 ); // Default 1.0 in standard mode
-
-	// Add AR UI overlay for scaling and placing
-	const arControlsDiv = document.createElement( 'div' );
-	arControlsDiv.style.cssText = `
-		position: absolute; bottom: 80px; left: 50%; transform: translateX(-50%);
-		display: none; gap: 10px; z-index: 999;
-	`;
-	arControlsDiv.innerHTML = `
-		<button id="ar-place-btn" style="padding: 10px 16px; font-size: 14px; border-radius: 20px; border: none; background: rgba(0,255,100,0.85); color: #000; font-weight: bold;">Place Track</button>
-		<button id="ar-scale-up" style="padding: 10px 16px; font-size: 14px; border-radius: 20px; border: none; background: rgba(255,255,255,0.85); font-weight: bold;">Scale +</button>
-		<button id="ar-scale-down" style="padding: 10px 16px; font-size: 14px; border-radius: 20px; border: none; background: rgba(255,255,255,0.85); font-weight: bold;">Scale -</button>
-	`;
-	document.body.appendChild( arControlsDiv );
-
-	const placeTrackOnReticle = () => {
-
-		if ( reticle.visible ) {
-
-			arGroup.position.setFromMatrixPosition( reticle.matrix );
-
-			// Also update vehicle physics body position to match placed track
-			if ( vehicle.rigidBody ) {
-
-				const pos = arGroup.position;
-				vehicle.spherePos.set( pos.x, pos.y + 0.5, pos.z );
-				vehicle.prevModelPos.set( pos.x, pos.y, pos.z );
-
-			}
-
-		}
+		vehicle.spherePos.copy( position );
+		vehicle.sphereVel.set( 0, 0, 0 );
+		vehicle.prevModelPos.set( position.x, position.y - 0.5, position.z );
+		vehicle.linearSpeed = 0;
+		vehicle.angularSpeed = 0;
+		vehicle.container.quaternion.setFromAxisAngle( new THREE.Vector3( 0, 1, 0 ), angle );
 
 	};
 
-	document.getElementById( 'ar-place-btn' ).addEventListener( 'click', placeTrackOnReticle );
+	// Track meshes come back once the player leaves the AR session (ARManager
+	// itself restores scene.background/fog; this only needs to undo the line
+	// above).
+	renderer.xr.addEventListener( 'sessionend', () => {
 
-	// Listen for controller select (trigger press) in VR/AR to place track
-	const controller0 = renderer.xr.getController( 0 );
-	const controller1 = renderer.xr.getController( 1 );
-	controller0.addEventListener( 'select', placeTrackOnReticle );
-	controller1.addEventListener( 'select', placeTrackOnReticle );
-
-	document.getElementById( 'ar-scale-up' ).addEventListener( 'click', () => {
-
-		if ( renderer.xr.isPresenting ) {
-
-			arScale = Math.min( arScale + 0.02, 0.5 );
-			arGroup.scale.setScalar( arScale );
-
-		}
+		trackGroup.visible = true;
 
 	} );
 
-	document.getElementById( 'ar-scale-down' ).addEventListener( 'click', () => {
-
-		if ( renderer.xr.isPresenting ) {
-
-			arScale = Math.max( arScale - 0.02, 0.02 );
-			arGroup.scale.setScalar( arScale );
-
-		}
-
-	} );
+	if ( arEnterBtn ) arEnterBtn.disabled = false;
 
 	const cam = new Camera();
 	scene.add( cam.debug );
 
-	let composer = null;
 	try {
 
 		composer = new EffectComposer( renderer );
@@ -476,6 +412,7 @@ async function init() {
 	orbitControls.maxDistance = 25;
 
 	const controls = new Controls();
+	controls.setupTouchUI();
 
 	const particles = new SmokeTrails( scene );
 	const driftMarks = new DriftMarks( scene, mapParam );
@@ -505,87 +442,28 @@ async function init() {
 
 	const timer = new THREE.Timer();
 
-	let originalBackground = scene.background;
-	let originalFog = scene.fog;
-
-	renderer.xr.addEventListener( 'sessionstart', () => {
-
-		scene.background = null;
-		scene.fog = null;
-		arGroup.scale.setScalar( arScale );
-		arControlsDiv.style.display = 'flex';
-
-	} );
-
-	renderer.xr.addEventListener( 'sessionend', () => {
-
-		scene.background = originalBackground;
-		scene.fog = originalFog;
-		arGroup.scale.setScalar( 1.0 );
-		arGroup.position.set( 0, 0, 0 );
-		arControlsDiv.style.display = 'none';
-		hitTestSourceRequested = false;
-		hitTestSource = null;
-		reticle.visible = false;
-
-	} );
-
 	renderer.setAnimationLoop( ( timestamp, frame ) => {
 
 		timer.update();
 		const dt = Math.min( timer.getDelta(), 1 / 30 );
 
-		if ( renderer.xr.isPresenting && frame ) {
+		const inAR = renderer.xr.isPresenting;
 
-			const session = renderer.xr.getSession();
+		if ( inAR && frame ) arManager.update( frame, dt );
 
-			if ( ! hitTestSourceRequested ) {
+		// Keyboard/touch/gamepad while driving normally; ARManager's own
+		// controller reading once a spot is confirmed; no input at all
+		// during AR placement (car shouldn't drive off before it's placed).
+		let input;
+		if ( inAR ) {
 
-				session.requestReferenceSpace( 'viewer' ).then( ( referenceSpace ) => {
+			input = arManager.isPlaced() ? arManager.getDriveInput() : { x: 0, z: 0, touchActive: false };
 
-					session.requestHitTestSource( { space: referenceSpace } ).then( ( source ) => {
+		} else {
 
-						hitTestSource = source;
-
-					} );
-
-				} );
-
-				session.addEventListener( 'end', () => {
-
-					hitTestSourceRequested = false;
-					hitTestSource = null;
-
-				} );
-
-				hitTestSourceRequested = true;
-
-			}
-
-			if ( hitTestSource ) {
-
-				const referenceSpace = renderer.xr.getReferenceSpace();
-				const hitTestResults = frame.getHitTestResults( hitTestSource );
-
-				if ( hitTestResults.length > 0 ) {
-
-					const hit = hitTestResults[ 0 ];
-					const pose = hit.getPose( referenceSpace );
-
-					reticle.visible = true;
-					reticle.matrix.fromArray( pose.transform.matrix );
-
-				} else {
-
-					reticle.visible = false;
-
-				}
-
-			}
+			input = controls.update();
 
 		}
-
-		const input = controls.update();
 
 		updateWorld( world, contactListener, dt );
 

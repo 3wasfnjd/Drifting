@@ -99,19 +99,11 @@
 			transform: translateY(-2px);
 		}
 
-		.xr-row {
-			display: flex;
-			gap: 12px;
-		}
-		.btn-ar {
-			flex: 1;
-			background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-			color: #fff;
-		}
-		.btn-vr {
-			flex: 1;
-			background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%);
-			color: #fff;
+		.ar-hint {
+			color: #8a99ad;
+			font-size: 0.85rem;
+			line-height: 1.4;
+			margin: 4px 4px 0;
 		}
 
 		.corner-link {
@@ -146,11 +138,7 @@
 		<div class="menu-nav">
 			<a id="play-btn" class="menu-btn btn-primary" href="game.html">PLAY GAME</a>
 			<a class="menu-btn btn-secondary" href="editor.html">TRACK EDITOR</a>
-
-			<div class="xr-row">
-				<a id="ar-mode-btn" class="menu-btn btn-ar" href="game.html?xr=ar">PLAY AR</a>
-				<a id="vr-mode-btn" class="menu-btn btn-vr" href="game.html?xr=vr">PLAY VR</a>
-			</div>
+			<p class="ar-hint">Playing on an AR-capable headset/phone? An "Enter AR" button appears automatically once you're in the game.</p>
 		</div>
 	</div>
 
@@ -159,8 +147,6 @@
 		const mapParam = urlParams.get('map');
 		if (mapParam) {
 			document.getElementById('play-btn').href = 'game.html?map=' + encodeURIComponent(mapParam);
-			document.getElementById('ar-mode-btn').href = 'game.html?xr=ar&map=' + encodeURIComponent(mapParam);
-			document.getElementById('vr-mode-btn').href = 'game.html?xr=vr&map=' + encodeURIComponent(mapParam);
 		}
 	</script>
 </body>
