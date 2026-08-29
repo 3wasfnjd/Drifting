@@ -31,6 +31,9 @@ export class Vehicle {
 		this.angularSpeed = 0;
 		this.acceleration = 0;
 
+		this.spawnPos = new THREE.Vector3( 3.5, 0.5, 5 );
+		this.spawnAngle = 0;
+
 		this.spherePos = new THREE.Vector3( 3.5, 0.5, 5 );
 		this.sphereVel = new THREE.Vector3();
 

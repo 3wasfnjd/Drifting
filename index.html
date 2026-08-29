@@ -3,53 +3,165 @@
 <head>
 	<meta charset="utf-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-	<title>Racing</title>
+	<title>Drifting Racing - Main Menu</title>
 	<style>
-		body { margin: 0; overflow: hidden; background: #000; }
-		canvas { display: block; touch-action: none; }
+		@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Rajdhani:wght@500;700&display=swap');
+
+		* { box-sizing: border-box; }
+		body {
+			margin: 0;
+			overflow: hidden;
+			background: radial-gradient(circle at center, #0f1826 0%, #050b14 100%);
+			font-family: 'Rajdhani', sans-serif;
+			color: #fff;
+			height: 100vh;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+		}
+
+		.menu-container {
+			background: rgba(10, 15, 25, 0.85);
+			backdrop-filter: blur(20px);
+			-webkit-backdrop-filter: blur(20px);
+			border: 1px solid rgba(0, 255, 200, 0.25);
+			border-radius: 28px;
+			padding: 40px;
+			width: 90%;
+			max-width: 520px;
+			text-align: center;
+			box-shadow: 0 15px 35px rgba(0,0,0,0.6), inset 0 0 20px rgba(0,255,200,0.05);
+			display: flex;
+			flex-direction: column;
+			gap: 20px;
+		}
+
+		.title-header h1 {
+			font-family: 'Orbitron', sans-serif;
+			font-size: 3rem;
+			font-weight: 900;
+			margin: 0;
+			letter-spacing: 5px;
+			background: linear-gradient(135deg, #ffffff 20%, #00ffcc 100%);
+			-webkit-background-clip: text;
+			-webkit-text-fill-color: transparent;
+			text-shadow: 0 0 30px rgba(0,255,200,0.4);
+		}
+
+		.title-header p {
+			color: #8a99ad;
+			font-size: 1.1rem;
+			margin-top: 6px;
+			letter-spacing: 2px;
+			text-transform: uppercase;
+		}
+
+		.menu-nav {
+			display: flex;
+			flex-direction: column;
+			gap: 14px;
+			margin-top: 10px;
+		}
+
+		.menu-btn {
+			font-family: 'Orbitron', sans-serif;
+			font-size: 1.15rem;
+			font-weight: 700;
+			padding: 16px;
+			border-radius: 14px;
+			border: none;
+			cursor: pointer;
+			text-transform: uppercase;
+			letter-spacing: 2px;
+			transition: all 0.25s ease;
+			text-decoration: none;
+			display: block;
+		}
+
+		.btn-primary {
+			background: linear-gradient(135deg, #00ffcc 0%, #00b8ff 100%);
+			color: #050b14;
+			box-shadow: 0 0 20px rgba(0, 255, 200, 0.4);
+		}
+		.btn-primary:hover {
+			box-shadow: 0 0 30px rgba(0, 255, 200, 0.8);
+			transform: translateY(-2px);
+		}
+
+		.btn-secondary {
+			background: rgba(255, 255, 255, 0.06);
+			color: #fff;
+			border: 1px solid rgba(255, 255, 255, 0.15);
+		}
+		.btn-secondary:hover {
+			background: rgba(255, 255, 255, 0.15);
+			border-color: rgba(0, 255, 200, 0.4);
+			transform: translateY(-2px);
+		}
+
+		.xr-row {
+			display: flex;
+			gap: 12px;
+		}
+		.btn-ar {
+			flex: 1;
+			background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+			color: #fff;
+		}
+		.btn-vr {
+			flex: 1;
+			background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%);
+			color: #fff;
+		}
+
 		.corner-link {
 			position: absolute;
-			color: #1f2430;
-			font: 400 13px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+			top: 16px;
+			right: 16px;
+			color: #fff;
+			background: rgba(255,255,255,0.1);
+			padding: 10px;
+			border-radius: 50%;
+			border: 1px solid rgba(255,255,255,0.2);
+			display: flex;
+			align-items: center;
+			justify-content: center;
 			text-decoration: none;
-			background: rgba(255,255,255,0.92);
-			padding: 9px 18px;
-			border-radius: 999px;
-			border: 1px solid rgba(0,0,0,0.06);
-			box-shadow: 0 4px 14px rgba(0,0,0,0.18);
-			backdrop-filter: blur(12px);
-			-webkit-backdrop-filter: blur(12px);
-			z-index: 20;
-			transition: background 0.15s;
+			backdrop-filter: blur(10px);
 		}
-		.corner-link:hover { background: #fff; }
-		#editor-link { bottom: 12px; right: 12px; }
-		#github-link { top: 12px; right: 12px; padding: 8px; line-height: 0; }
-		#github-link svg { display: block; width: 20px; height: 20px; }
+		.corner-link svg { width: 22px; height: 22px; fill: currentColor; }
 	</style>
-	<script type="importmap">
-	{
-		"imports": {
-			"three": "https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.module.js",
-			"three/addons/": "https://cdn.jsdelivr.net/npm/three@0.185.1/examples/jsm/",
-			"crashcat": "https://esm.sh/crashcat@0.0.3"
-		}
-	}
-	</script>
 </head>
 <body>
-	<a id="github-link" class="corner-link" href="https://github.com/mrdoob/Starter-Kit-Racing" aria-label="View source on GitHub">
-		<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.56v-2.05c-3.2.7-3.88-1.36-3.88-1.36-.52-1.34-1.28-1.69-1.28-1.69-1.05-.71.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.71 1.26 3.37.96.1-.75.4-1.26.73-1.55-2.55-.29-5.23-1.28-5.23-5.69 0-1.26.45-2.29 1.19-3.1-.12-.29-.51-1.46.11-3.05 0 0 .97-.31 3.18 1.18.92-.26 1.91-.39 2.89-.39.98 0 1.97.13 2.89.39 2.21-1.5 3.18-1.18 3.18-1.18.62 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.1 0 4.42-2.69 5.39-5.25 5.68.41.36.78 1.06.78 2.13v3.16c0 .31.21.67.79.56C20.21 21.39 23.5 17.07 23.5 12 23.5 5.65 18.35.5 12 .5z"/></svg>
+	<a class="corner-link" href="https://github.com/3wasfnjd/Drifting" aria-label="GitHub">
+		<svg viewBox="0 0 24 24"><path d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.56v-2.05c-3.2.7-3.88-1.36-3.88-1.36-.52-1.34-1.28-1.69-1.28-1.69-1.05-.71.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.71 1.26 3.37.96.1-.75.4-1.26.73-1.55-2.55-.29-5.23-1.28-5.23-5.69 0-1.26.45-2.29 1.19-3.1-.12-.29-.51-1.46.11-3.05 0 0 .97-.31 3.18 1.18.92-.26 1.91-.39 2.89-.39.98 0 1.97.13 2.89.39 2.21-1.5 3.18-1.18 3.18-1.18.62 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.1 0 4.42-2.69 5.39-5.25 5.68.41.36.78 1.06.78 2.13v3.16c0 .31.21.67.79.56C20.21 21.39 23.5 17.07 23.5 12 23.5 5.65 18.35.5 12 .5z"/></svg>
 	</a>
-	<a id="editor-link" class="corner-link" href="editor.html">Create new track</a>
+
+	<div class="menu-container">
+		<div class="title-header">
+			<h1>DRIFTING 3D</h1>
+			<p>Next-Gen XR Racing Experience</p>
+		</div>
+
+		<div class="menu-nav">
+			<a id="play-btn" class="menu-btn btn-primary" href="game.html">PLAY GAME</a>
+			<a class="menu-btn btn-secondary" href="editor.html">TRACK EDITOR</a>
+
+			<div class="xr-row">
+				<a id="ar-mode-btn" class="menu-btn btn-ar" href="game.html?xr=ar">PLAY AR</a>
+				<a id="vr-mode-btn" class="menu-btn btn-vr" href="game.html?xr=vr">PLAY VR</a>
+			</div>
+		</div>
+	</div>
+
 	<script>
-		const map = new URLSearchParams( location.search ).get( 'map' );
-		if ( map ) {
-			const link = document.getElementById( 'editor-link' );
-			link.href = 'editor.html?map=' + map;
-			link.textContent = 'Edit this track';
+		const urlParams = new URLSearchParams(window.location.search);
+		const mapParam = urlParams.get('map');
+		if (mapParam) {
+			document.getElementById('play-btn').href = 'game.html?map=' + encodeURIComponent(mapParam);
+			document.getElementById('ar-mode-btn').href = 'game.html?xr=ar&map=' + encodeURIComponent(mapParam);
+			document.getElementById('vr-mode-btn').href = 'game.html?xr=vr&map=' + encodeURIComponent(mapParam);
 		}
 	</script>
-	<script type="module" src="js/main.js"></script>
 </body>
 </html>
