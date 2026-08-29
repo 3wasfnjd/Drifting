@@ -53,11 +53,9 @@ renderer.shadowMap.enabled = true;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.0;
 
-const bloomPass = new UnrealBloomPass( new THREE.Vector2( window.innerWidth, window.innerHeight ) );
-bloomPass.strength = 0.02;
-bloomPass.radius = 0.02;
-bloomPass.threshold = 0.5;
-
+// The EffectComposer (and its bloom pass) is created once track/camera setup
+// finishes inside init(). Declared here so the resize handler below can reach it.
+let composer = null;
 
 function setupDOM() {
 
@@ -109,6 +107,7 @@ scene.add( hemiLight );
 window.addEventListener( 'resize', () => {
 
 	renderer.setSize( window.innerWidth, window.innerHeight );
+	if ( composer ) composer.setSize( window.innerWidth, window.innerHeight );
 
 } );
 
@@ -350,28 +349,6 @@ async function init() {
 
 	dirLight.target = vehicleGroup;
 
-	// Showcase Mirror Ground Plane with Glossy Dark Material
-	const floorGeo = new THREE.PlaneGeometry( 100, 100 );
-	const floorMat = new THREE.MeshStandardMaterial( {
-		color: 0x070d18,
-		roughness: 0.1,
-		metalness: 0.8,
-		side: THREE.DoubleSide
-	} );
-	const floorMesh = new THREE.Mesh( floorGeo, floorMat );
-	floorMesh.rotation.x = - Math.PI / 2;
-	floorMesh.position.y = - 0.05;
-	floorMesh.receiveShadow = true;
-	scene.add( floorMesh );
-
-	// Spotlight for Showcase Lighting Effect
-	const spotLight = new THREE.SpotLight( 0x00ffcc, 5 );
-	spotLight.position.set( 0, 10, 0 );
-	spotLight.angle = Math.PI / 4;
-	spotLight.penumbra = 0.8;
-	spotLight.castShadow = true;
-	scene.add( spotLight );
-
 	// AR Reticle for surface detection
 	const reticleGeom = new THREE.RingGeometry( 0.15, 0.2, 32 ).rotateX( - Math.PI / 2 );
 	const reticleMat = new THREE.MeshBasicMaterial( { color: 0x00ff00, side: THREE.DoubleSide } );
@@ -452,7 +429,6 @@ async function init() {
 	const cam = new Camera();
 	scene.add( cam.debug );
 
-	let composer = null;
 	try {
 
 		composer = new EffectComposer( renderer );
@@ -476,6 +452,7 @@ async function init() {
 	orbitControls.maxDistance = 25;
 
 	const controls = new Controls();
+	controls.setupTouchUI();
 
 	const particles = new SmokeTrails( scene );
 	const driftMarks = new DriftMarks( scene, mapParam );
