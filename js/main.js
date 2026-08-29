@@ -44,14 +44,6 @@ xrBtnStyle.textContent = `
 `;
 document.head.appendChild( xrBtnStyle );
 
-const arBtn = ARButton.createButton( renderer, {
-	optionalFeatures: [ 'hit-test', 'local-floor', 'dom-overlay' ],
-	domOverlay: { root: document.body }
-} );
-document.body.appendChild( arBtn );
-
-const vrBtn = VRButton.createButton( renderer );
-document.body.appendChild( vrBtn );
 renderer.setSize( window.innerWidth, window.innerHeight );
 renderer.setPixelRatio( window.devicePixelRatio );
 renderer.shadowMap.enabled = true;
@@ -65,7 +57,34 @@ bloomPass.threshold = 0.5;
 
 renderer.setEffects( [ bloomPass ] );
 
-document.body.appendChild( renderer.domElement );
+function setupDOM() {
+
+	if ( ! document.body.contains( renderer.domElement ) ) {
+
+		document.body.appendChild( renderer.domElement );
+
+	}
+
+	const arBtn = ARButton.createButton( renderer, {
+		optionalFeatures: [ 'hit-test', 'local-floor', 'dom-overlay' ],
+		domOverlay: { root: document.body }
+	} );
+	document.body.appendChild( arBtn );
+
+	const vrBtn = VRButton.createButton( renderer );
+	document.body.appendChild( vrBtn );
+
+}
+
+if ( document.readyState === 'loading' ) {
+
+	window.addEventListener( 'DOMContentLoaded', setupDOM );
+
+} else {
+
+	setupDOM();
+
+}
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color( 0xadb2ba );
@@ -195,15 +214,23 @@ async function init() {
 	// Probes
 
 	const probeHeight = 6;
-	const probes = new LightProbeGrid(
-		hw * 2, probeHeight, hd * 2,
-		Math.max( 4, Math.round( hw / 4 ) ),
-		2,
-		Math.max( 4, Math.round( hd / 4 ) ),
-	);
-	probes.position.set( bounds.centerX, probeHeight / 2, bounds.centerZ );
-	probes.bake( renderer, scene, { cubemapSize: 32, near: 0.1, far: groundSize } );
-	scene.add( probes );
+	try {
+
+		const probes = new LightProbeGrid(
+			hw * 2, probeHeight, hd * 2,
+			Math.max( 4, Math.round( hw / 4 ) ),
+			2,
+			Math.max( 4, Math.round( hd / 4 ) ),
+		);
+		probes.position.set( bounds.centerX, probeHeight / 2, bounds.centerZ );
+		probes.bake( renderer, scene, { cubemapSize: 32, near: 0.1, far: groundSize } );
+		scene.add( probes );
+
+	} catch ( e ) {
+
+		console.warn( 'LightProbeGrid bake skipped:', e );
+
+	}
 
 	// scene.add( new LightProbeGridHelper( probes, 0.5 ) );
 
@@ -392,6 +419,9 @@ async function init() {
 
 	renderer.setAnimationLoop( ( timestamp, frame ) => {
 
+		timer.update();
+		const dt = Math.min( timer.getDelta(), 1 / 30 );
+
 		if ( renderer.xr.isPresenting && frame ) {
 
 			const session = renderer.xr.getSession();
@@ -441,9 +471,6 @@ async function init() {
 			}
 
 		}
-
-		timer.update();
-		const dt = Math.min( timer.getDelta(), 1 / 30 );
 
 		const input = controls.update();
 

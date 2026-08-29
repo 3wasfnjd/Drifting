@@ -22,7 +22,15 @@ export class Controls {
 		window.addEventListener( 'keydown', ( e ) => this.keys[ e.code ] = true );
 		window.addEventListener( 'keyup', ( e ) => this.keys[ e.code ] = false );
 
-		this.setupTouchUI();
+		if ( document.body ) {
+
+			this.setupTouchUI();
+
+		} else {
+
+			window.addEventListener( 'DOMContentLoaded', () => this.setupTouchUI() );
+
+		}
 
 	}
 
