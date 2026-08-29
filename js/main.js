@@ -3,6 +3,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { LightProbeGrid } from 'three/addons/lighting/LightProbeGrid.js';
 import { LightProbeGridHelper } from 'three/addons/helpers/LightProbeGridHelper.js';
 import { createWorldSettings, createWorld, addBroadphaseLayer, addObjectLayer, enableCollision, registerAll, updateWorld, rigidBody, box, MotionType } from 'crashcat';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { Vehicle, MAX_SPEED } from './Vehicle.js';
 import { Camera } from './Camera.js';
 import { Controls } from './Controls.js';
@@ -294,10 +295,94 @@ async function init() {
 	} );
 	toMove.forEach( ( child ) => arGroup.add( child ) );
 
-	const vehicleGroup = vehicle.init( models[ 'vehicle-truck-yellow' ] );
+	let currentVehicleMesh = models[ 'vehicle-truck-yellow' ];
+	let vehicleGroup = vehicle.init( currentVehicleMesh );
 	arGroup.add( vehicleGroup );
 
+	// Handle Car Selector UI Cards
+	document.querySelectorAll( '.car-card' ).forEach( ( card ) => {
+
+		card.addEventListener( 'click', () => {
+
+			document.querySelectorAll( '.car-card' ).forEach( c => c.classList.remove( 'active' ) );
+			card.classList.add( 'active' );
+
+			const modelName = card.getAttribute( 'data-model' );
+
+			if ( models[ modelName ] ) {
+
+				arGroup.remove( vehicleGroup );
+				vehicleGroup = vehicle.init( models[ modelName ] );
+				arGroup.add( vehicleGroup );
+				dirLight.target = vehicleGroup;
+
+			}
+
+		} );
+
+	} );
+
+	// Handle AR/VR & Play Game Buttons
+	const arLaunchBtn = document.getElementById( 'launch-ar' );
+	const vrLaunchBtn = document.getElementById( 'launch-vr' );
+	const playBtn = document.getElementById( 'start-game-btn' );
+
+	if ( arLaunchBtn ) {
+
+		arLaunchBtn.addEventListener( 'click', () => {
+
+			const arBtnEl = document.getElementById( 'ARButton' );
+			if ( arBtnEl ) arBtnEl.click();
+
+		} );
+
+	}
+
+	if ( vrLaunchBtn ) {
+
+		vrLaunchBtn.addEventListener( 'click', () => {
+
+			const vrBtnEl = document.getElementById( 'VRButton' );
+			if ( vrBtnEl ) vrBtnEl.click();
+
+		} );
+
+	}
+
+	if ( playBtn ) {
+
+		playBtn.addEventListener( 'click', () => {
+
+			const uiOverlay = document.querySelector( '.showcase-ui' );
+			if ( uiOverlay ) uiOverlay.style.display = 'none';
+
+		} );
+
+	}
+
 	dirLight.target = vehicleGroup;
+
+	// Showcase Mirror Ground Plane with Glossy Dark Material
+	const floorGeo = new THREE.PlaneGeometry( 100, 100 );
+	const floorMat = new THREE.MeshStandardMaterial( {
+		color: 0x070d18,
+		roughness: 0.1,
+		metalness: 0.8,
+		side: THREE.DoubleSide
+	} );
+	const floorMesh = new THREE.Mesh( floorGeo, floorMat );
+	floorMesh.rotation.x = - Math.PI / 2;
+	floorMesh.position.y = - 0.05;
+	floorMesh.receiveShadow = true;
+	scene.add( floorMesh );
+
+	// Spotlight for Showcase Lighting Effect
+	const spotLight = new THREE.SpotLight( 0x00ffcc, 5 );
+	spotLight.position.set( 0, 10, 0 );
+	spotLight.angle = Math.PI / 4;
+	spotLight.penumbra = 0.8;
+	spotLight.castShadow = true;
+	scene.add( spotLight );
 
 	// AR Reticle for surface detection
 	const reticleGeom = new THREE.RingGeometry( 0.15, 0.2, 32 ).rotateX( - Math.PI / 2 );
@@ -378,6 +463,13 @@ async function init() {
 
 	const cam = new Camera();
 	scene.add( cam.debug );
+
+	const orbitControls = new OrbitControls( cam.camera, renderer.domElement );
+	orbitControls.enableDamping = true;
+	orbitControls.dampingFactor = 0.05;
+	orbitControls.maxPolarAngle = Math.PI / 2 - 0.05;
+	orbitControls.minDistance = 3;
+	orbitControls.maxDistance = 25;
 
 	const controls = new Controls();
 
@@ -516,6 +608,8 @@ async function init() {
 
 		const hasInput = input.touchActive || Math.abs( input.x ) > 0.05 || Math.abs( input.z ) > 0.05;
 		lapTimer.update( dt, vehicle.spherePos, hasInput );
+
+		if ( orbitControls ) orbitControls.update();
 
 		renderer.render( scene, renderer.xr.isPresenting ? renderer.xr.getCamera() : cam.camera );
 
