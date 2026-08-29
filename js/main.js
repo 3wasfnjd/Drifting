@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { LightProbeGrid } from 'three/addons/lighting/LightProbeGrid.js';
 import { LightProbeGridHelper } from 'three/addons/helpers/LightProbeGridHelper.js';
@@ -56,7 +58,6 @@ bloomPass.strength = 0.02;
 bloomPass.radius = 0.02;
 bloomPass.threshold = 0.5;
 
-renderer.setEffects( [ bloomPass ] );
 
 function setupDOM() {
 
@@ -273,6 +274,8 @@ async function init() {
 	if ( spawn ) {
 
 		const [ sx, sy, sz ] = spawn.position;
+		vehicle.spawnPos.set( sx, sy, sz );
+		vehicle.spawnAngle = spawn.angle;
 		vehicle.spherePos.set( sx, sy, sz );
 		vehicle.prevModelPos.set( sx, 0, sz );
 		vehicle.container.rotation.y = spawn.angle;
@@ -464,6 +467,22 @@ async function init() {
 	const cam = new Camera();
 	scene.add( cam.debug );
 
+	let composer = null;
+	try {
+
+		composer = new EffectComposer( renderer );
+		const renderPass = new RenderPass( scene, cam.camera );
+		composer.addPass( renderPass );
+
+		const bloomPass = new UnrealBloomPass( new THREE.Vector2( window.innerWidth, window.innerHeight ), 0.02, 0.02, 0.5 );
+		composer.addPass( bloomPass );
+
+	} catch ( e ) {
+
+		console.warn( 'EffectComposer setup skipped:', e );
+
+	}
+
 	const orbitControls = new OrbitControls( cam.camera, renderer.domElement );
 	orbitControls.enableDamping = true;
 	orbitControls.dampingFactor = 0.05;
@@ -611,7 +630,15 @@ async function init() {
 
 		if ( orbitControls ) orbitControls.update();
 
-		renderer.render( scene, renderer.xr.isPresenting ? renderer.xr.getCamera() : cam.camera );
+		if ( composer && ! renderer.xr.isPresenting ) {
+
+			composer.render();
+
+		} else {
+
+			renderer.render( scene, renderer.xr.isPresenting ? renderer.xr.getCamera() : cam.camera );
+
+		}
 
 	} );
 
