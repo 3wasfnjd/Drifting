@@ -326,40 +326,25 @@ async function init() {
 	} );
 
 	// Handle AR/VR & Play Game Buttons
-	const arLaunchBtn = document.getElementById( 'launch-ar' );
-	const vrLaunchBtn = document.getElementById( 'launch-vr' );
-	const playBtn = document.getElementById( 'start-game-btn' );
+	// Auto-trigger AR/VR if specified in URL params from Main Menu (?xr=ar or ?xr=vr)
+	const xrParam = new URLSearchParams( window.location.search ).get( 'xr' );
+	if ( xrParam === 'ar' ) {
 
-	if ( arLaunchBtn ) {
-
-		arLaunchBtn.addEventListener( 'click', () => {
+		setTimeout( () => {
 
 			const arBtnEl = document.getElementById( 'ARButton' );
 			if ( arBtnEl ) arBtnEl.click();
 
-		} );
+		}, 500 );
 
-	}
+	} else if ( xrParam === 'vr' ) {
 
-	if ( vrLaunchBtn ) {
-
-		vrLaunchBtn.addEventListener( 'click', () => {
+		setTimeout( () => {
 
 			const vrBtnEl = document.getElementById( 'VRButton' );
 			if ( vrBtnEl ) vrBtnEl.click();
 
-		} );
-
-	}
-
-	if ( playBtn ) {
-
-		playBtn.addEventListener( 'click', () => {
-
-			const uiOverlay = document.querySelector( '.showcase-ui' );
-			if ( uiOverlay ) uiOverlay.style.display = 'none';
-
-		} );
+		}, 500 );
 
 	}
 
