@@ -24,7 +24,7 @@ const homeARHost = document.body.dataset.homeArHost === 'true';
 const initialARMode = homeARHost ? 'menu' : ( [ 'free', 'track', 'arena' ].includes( requestedARMode ) ? requestedARMode : 'free' );
 const isARExperience = homeARHost || pageParams.get( 'ar' ) === '1';
 const AR_CONTENT_SCALE = 0.08;
-const AR_VEHICLE_RADIUS = 0.5 * AR_CONTENT_SCALE;
+let activeARScale = AR_CONTENT_SCALE;
 
 let activeARMode = initialARMode;
 
@@ -276,10 +276,8 @@ async function init() {
 
 	const trackGroup = buildTrack( scene, models, customCells, ! isARExperience );
 	trackGroup.visible = ! isARExperience;
-	if ( isARExperience ) trackGroup.scale.multiplyScalar( AR_CONTENT_SCALE );
 
 	const driftArenaGroup = buildDriftArena( models );
-	if ( isARExperience ) driftArenaGroup.scale.setScalar( AR_CONTENT_SCALE );
 	scene.add( driftArenaGroup );
 
 	// The baked probe grid is useful for the web track, but expensive and
@@ -337,17 +335,17 @@ async function init() {
 
 	}
 
-	const sphereBody = createSphereBody( world, spawn ? spawn.position : null, isARExperience ? AR_VEHICLE_RADIUS : 0.5 );
+	const sphereBody = createSphereBody( world, spawn ? spawn.position : null, 0.5 );
 
 	const vehicle = new Vehicle();
 	vehicle.rigidBody = sphereBody;
 	vehicle.physicsWorld = world;
-	vehicle.visualOffset = isARExperience ? AR_VEHICLE_RADIUS : 0.5;
+	vehicle.sphereRadius = 0.5;
 
 	if ( spawn ) {
 
 		const [ sx, sy, sz ] = spawn.position;
-		vehicle.spawnPos.set( sx, sy, sz );
+		vehicle.spawnPos = [ sx, sy, sz ];
 		vehicle.spawnAngle = spawn.angle;
 		vehicle.spherePos.set( sx, sy, sz );
 		vehicle.prevModelPos.set( sx, 0, sz );
@@ -356,6 +354,7 @@ async function init() {
 	}
 
 	const arGroup = new THREE.Group();
+	arGroup.visible = ! isARExperience;
 	scene.add( arGroup );
 
 	// Move track objects to arGroup
@@ -421,9 +420,7 @@ async function init() {
 	} );
 
 	let currentVehicleMesh = models[ 'vehicle-truck-yellow' ];
-	let arVehicleScaleFactor = 1;
 	let vehicleGroup = vehicle.init( currentVehicleMesh );
-	if ( isARExperience ) vehicleGroup.scale.setScalar( AR_CONTENT_SCALE * arVehicleScaleFactor );
 	arGroup.add( vehicleGroup );
 
 	// Handle Car Selector UI Cards
@@ -440,7 +437,6 @@ async function init() {
 
 				arGroup.remove( vehicleGroup );
 				vehicleGroup = vehicle.init( models[ modelName ] );
-				if ( isARExperience ) vehicleGroup.scale.setScalar( AR_CONTENT_SCALE * arVehicleScaleFactor );
 				arGroup.add( vehicleGroup );
 				dirLight.target = vehicleGroup;
 
@@ -460,69 +456,85 @@ async function init() {
 	arManager = new ARManager( {
 		renderer,
 		scene,
-		buildFreeRoamFloor: activeARMode === 'free',
+		buildFreeRoamFloor: false,
 		placementEnabled: activeARMode !== 'menu',
-		spawnHeight: isARExperience ? AR_VEHICLE_RADIUS : 0.5,
+		spawnHeight: 0.5,
 	} );
 	arManager.setWorld( world );
 
 	arManager.onPlaced = ( { position, angle } ) => {
 
-		let vehiclePosition = position.clone();
-		let vehicleAngle = angle;
+		// Hajwala reference architecture: physics stays at its authored real
+		// scale while this root applies the tabletop AR transform to visuals.
+		const floorY = position.y - 0.5;
+		arGroup.position.set( position.x, floorY, position.z );
+		arGroup.quaternion.setFromAxisAngle( new THREE.Vector3( 0, 1, 0 ), angle );
+		arGroup.scale.setScalar( activeARScale );
+		arGroup.visible = true;
 
-		if ( activeARMode === 'track' ) {
+		let vehiclePosition = new THREE.Vector3( 0, 0.5, 0 );
+		let vehicleAngle = 0;
 
-			const offset = {
-				x: position.x - arTrackBounds.centerX * AR_CONTENT_SCALE,
-				y: position.y,
-				z: position.z - arTrackBounds.centerZ * AR_CONTENT_SCALE,
-				scale: AR_CONTENT_SCALE,
-			};
-			trackGroup.position.set( offset.x, position.y - 0.5 * 0.75 * AR_CONTENT_SCALE, offset.z );
-			trackGroup.visible = true;
-			buildWallColliders( world, null, customCells, offset );
+		if ( activeARMode === 'free' ) {
 
+			const halfSize = 500;
 			rigidBody.create( world, {
-				shape: box.create( { halfExtents: [ roadHalf * AR_CONTENT_SCALE, 0.01 * AR_CONTENT_SCALE, roadHalf * AR_CONTENT_SCALE ] } ),
+				shape: box.create( { halfExtents: [ halfSize, 0.01, halfSize ] } ),
 				motionType: MotionType.STATIC,
 				objectLayer: OL_STATIC,
-				position: [ position.x, position.y - 0.01 * AR_CONTENT_SCALE, position.z ],
+				position: [ 0, -0.01, 0 ],
+				friction: 5.0,
+				restitution: 0,
+			} );
+
+		} else if ( activeARMode === 'track' ) {
+
+			trackGroup.position.set( - arTrackBounds.centerX, -0.5, - arTrackBounds.centerZ );
+			trackGroup.visible = true;
+			buildWallColliders( world, null, customCells, {
+				x: - arTrackBounds.centerX,
+				y: 0,
+				z: - arTrackBounds.centerZ,
+				scale: 1,
+			} );
+
+			rigidBody.create( world, {
+				shape: box.create( { halfExtents: [ roadHalf, 0.01, roadHalf ] } ),
+				motionType: MotionType.STATIC,
+				objectLayer: OL_STATIC,
+				position: [ 0, -0.01, 0 ],
 				friction: 5.0,
 				restitution: 0,
 			} );
 
 			const trackSpawn = spawn || computeSpawnPosition( TRACK_CELLS );
 			vehiclePosition.set(
-				trackSpawn.position[ 0 ] * AR_CONTENT_SCALE + offset.x,
-				position.y + AR_VEHICLE_RADIUS,
-				trackSpawn.position[ 2 ] * AR_CONTENT_SCALE + offset.z
+				trackSpawn.position[ 0 ] - arTrackBounds.centerX,
+				0.5,
+				trackSpawn.position[ 2 ] - arTrackBounds.centerZ
 			);
 			vehicleAngle = trackSpawn.angle;
 
 		} else if ( activeARMode === 'arena' ) {
 
-			driftArenaGroup.position.set( position.x, position.y, position.z );
+			driftArenaGroup.position.set( 0, 0, 0 );
 			driftArenaGroup.visible = true;
-			buildDriftArenaPhysics( world, position, AR_CONTENT_SCALE );
-			vehiclePosition.set(
-				position.x,
-				position.y + AR_VEHICLE_RADIUS,
-				position.z + DRIFT_ARENA_RADIUS * AR_CONTENT_SCALE * 0.45
-			);
+			buildDriftArenaPhysics( world, new THREE.Vector3( 0, 0, 0 ), 1 );
+			vehiclePosition.set( 0, 0.5, DRIFT_ARENA_RADIUS * 0.45 );
 			vehicleAngle = Math.PI;
 
 		}
 
-		rigidBody.setPosition( world, sphereBody, [ vehiclePosition.x, vehiclePosition.y, vehiclePosition.z ], false );
+		rigidBody.setPosition( world, sphereBody, vehiclePosition.toArray(), false );
 		rigidBody.setLinearVelocity( world, sphereBody, [ 0, 0, 0 ] );
 		rigidBody.setAngularVelocity( world, sphereBody, [ 0, 0, 0 ] );
 
 		vehicle.spherePos.copy( vehiclePosition );
-		vehicle.spawnPos.copy( vehiclePosition );
+		vehicle.spawnPos = vehiclePosition.toArray();
 		vehicle.spawnAngle = vehicleAngle;
+		vehicle.sphereRadius = 0.5;
 		vehicle.sphereVel.set( 0, 0, 0 );
-		vehicle.prevModelPos.set( vehiclePosition.x, vehiclePosition.y - ( isARExperience ? AR_VEHICLE_RADIUS : 0.5 ), vehiclePosition.z );
+		vehicle.prevModelPos.set( vehiclePosition.x, vehiclePosition.y - 0.5, vehiclePosition.z );
 		vehicle.linearSpeed = 0;
 		vehicle.angularSpeed = 0;
 		vehicle.container.quaternion.setFromAxisAngle( new THREE.Vector3( 0, 1, 0 ), vehicleAngle );
@@ -565,7 +577,7 @@ async function init() {
 	const particles = new SmokeTrails( scene, isARExperience ? {
 		poolSize: 160,
 		particlesPerEmit: 1,
-		scale: AR_CONTENT_SCALE,
+		scale: activeARScale,
 		maxLife: 1.1,
 		emitInterval: 0.1,
 	} : undefined );
@@ -614,15 +626,11 @@ async function init() {
 				if ( selectedMode ) {
 
 					activeARMode = selectedMode;
-					if ( activeARMode === 'free' ) {
-
-						arVehicleScaleFactor = Math.max( arVehicleScaleFactor, 1.5 );
-						vehicleGroup.scale.setScalar( AR_CONTENT_SCALE * arVehicleScaleFactor );
-
-					}
+					activeARScale = activeARMode === 'free' ? AR_CONTENT_SCALE * 1.5 : AR_CONTENT_SCALE;
+					arGroup.scale.setScalar( activeARScale );
 					modeMenu.hide();
 					arManager.setSelectionRaysVisible( false );
-					arManager.buildFreeRoamFloor = activeARMode === 'free';
+					arManager.buildFreeRoamFloor = false;
 					arManager.setPlacementEnabled( true );
 
 				}
@@ -639,7 +647,16 @@ async function init() {
 		let input;
 		if ( inAR ) {
 
-			input = arManager.isPlaced() ? arManager.getDriveInput() : { x: 0, z: 0, touchActive: false };
+			if ( arManager.isPlaced() ) {
+
+				input = arManager.getDriveInput();
+				input.handbrake = arManager.getHandbrakeHold();
+
+			} else {
+
+				input = { x: 0, z: 0, touchActive: false, handbrake: false };
+
+			}
 
 		} else {
 
@@ -647,13 +664,13 @@ async function init() {
 
 		}
 
-		if ( inAR && arManager.isPlaced() && activeARMode === 'free' ) {
+		if ( inAR && arManager.isPlaced() ) {
 
 			const scaleInput = arManager.getVehicleScaleInput();
 			if ( scaleInput !== 0 ) {
 
-				arVehicleScaleFactor = THREE.MathUtils.clamp( arVehicleScaleFactor + scaleInput * dt, 0.5, 2.5 );
-				vehicleGroup.scale.setScalar( AR_CONTENT_SCALE * arVehicleScaleFactor );
+				activeARScale = THREE.MathUtils.clamp( activeARScale + scaleInput * dt * 0.08, 0.04, 0.18 );
+				arGroup.scale.setScalar( activeARScale );
 
 			}
 
@@ -672,7 +689,7 @@ async function init() {
 
 				const bodyPosition = sphereBody.position;
 				const bodyVelocity = sphereBody.motionProperties.linearVelocity;
-				rigidBody.setPosition( world, sphereBody, [ bodyPosition[ 0 ], vehicle.spawnPos.y, bodyPosition[ 2 ] ], false );
+				rigidBody.setPosition( world, sphereBody, [ bodyPosition[ 0 ], vehicle.spawnPos[ 1 ], bodyPosition[ 2 ] ], false );
 				rigidBody.setLinearVelocity( world, sphereBody, [ bodyVelocity[ 0 ], 0, bodyVelocity[ 2 ] ] );
 
 			}
@@ -699,7 +716,7 @@ async function init() {
 		if ( simulationReady ) {
 
 			particles.update( dt, vehicle );
-			const markScale = isARExperience ? AR_CONTENT_SCALE * arVehicleScaleFactor : 1;
+			const markScale = isARExperience ? activeARScale : 1;
 			const fadingARMarks = isARExperience && ( activeARMode === 'free' || activeARMode === 'arena' );
 			driftMarks.update( dt, vehicle, {
 				scale: markScale,
