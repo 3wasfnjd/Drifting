@@ -33,6 +33,7 @@ export class Vehicle {
 
 		this.spawnPos = new THREE.Vector3( 3.5, 0.5, 5 );
 		this.spawnAngle = 0;
+		this.visualOffset = 0.5;
 
 		this.spherePos = new THREE.Vector3( 3.5, 0.5, 5 );
 		this.sphereVel = new THREE.Vector3();
@@ -196,13 +197,13 @@ export class Vehicle {
 
 			if ( this.rigidBody ) {
 
-				rigidBody.setPosition( this.physicsWorld, this.rigidBody, [ 3.5, 0.5, 5 ], false );
+				rigidBody.setPosition( this.physicsWorld, this.rigidBody, this.spawnPos.toArray(), false );
 				rigidBody.setLinearVelocity( this.physicsWorld, this.rigidBody, [ 0, 0, 0 ] );
 				rigidBody.setAngularVelocity( this.physicsWorld, this.rigidBody, [ 0, 0, 0 ] );
 
 			}
 
-			this.spherePos.set( 3.5, 0.5, 5 );
+			this.spherePos.copy( this.spawnPos );
 			this.sphereVel.set( 0, 0, 0 );
 			this.linearSpeed = 0;
 			this.angularSpeed = 0;
@@ -214,7 +215,7 @@ export class Vehicle {
 
 		this.container.position.set(
 			this.spherePos.x,
-			this.spherePos.y - 0.5,
+			this.spherePos.y - this.visualOffset,
 			this.spherePos.z
 		);
 

@@ -16,11 +16,17 @@ import { LapTimer } from './LapTimer.js';
 import { ARManager } from './ARManager.js';
 import { ColorMapGLTFLoader } from './Loader.js';
 import { buildDriftArena, buildDriftArenaPhysics, DRIFT_ARENA_RADIUS } from './DriftArena.js';
+import { ARModeMenu } from './ARModeMenu.js';
 
 const pageParams = new URLSearchParams( window.location.search );
 const requestedARMode = pageParams.get( 'arMode' );
-const arMode = [ 'free', 'track', 'arena' ].includes( requestedARMode ) ? requestedARMode : 'free';
-const isARExperience = pageParams.get( 'ar' ) === '1';
+const homeARHost = document.body.dataset.homeArHost === 'true';
+const initialARMode = homeARHost ? 'menu' : ( [ 'free', 'track', 'arena' ].includes( requestedARMode ) ? requestedARMode : 'free' );
+const isARExperience = homeARHost || pageParams.get( 'ar' ) === '1';
+const AR_CONTENT_SCALE = 0.08;
+const AR_VEHICLE_RADIUS = 0.5 * AR_CONTENT_SCALE;
+
+let activeARMode = initialARMode;
 
 const renderer = new THREE.WebGLRenderer( { antialias: true, outputBufferType: THREE.HalfFloatType, alpha: true } );
 renderer.xr.enabled = true;
@@ -84,7 +90,7 @@ async function enterAR() {
 	} catch ( error ) {
 
 		console.error( '[AR] Unable to start immersive-ar session:', error );
-		arEnterBtn.textContent = `ENTER ${ arMode.toUpperCase() } AR`;
+		arEnterBtn.textContent = 'ENTER AR';
 		arEnterBtn.disabled = false;
 		window.alert( 'AR could not start. Use a WebXR AR-compatible browser and allow the requested XR permissions.' );
 
@@ -96,6 +102,8 @@ async function enterAR() {
 
 }
 
+window.startDriftingAR = enterAR;
+
 function setupDOM() {
 
 	if ( ! document.body.contains( renderer.domElement ) ) {
@@ -106,7 +114,7 @@ function setupDOM() {
 
 	arEnterBtn = document.createElement( 'button' );
 	arEnterBtn.id = 'ARButton';
-	arEnterBtn.textContent = `ENTER ${ arMode.toUpperCase() } AR`;
+	arEnterBtn.textContent = 'ENTER AR';
 	arEnterBtn.disabled = true; // enabled once arManager is ready (see init())
 	arEnterBtn.addEventListener( 'click', () => {
 
@@ -119,7 +127,7 @@ function setupDOM() {
 
 	ARManager.isSupported().then( ( supported ) => {
 
-		arEnterBtn.dataset.supported = supported && isARExperience ? 'true' : 'false';
+		arEnterBtn.dataset.supported = supported && isARExperience && ! homeARHost ? 'true' : 'false';
 		if ( ! supported && new URLSearchParams( window.location.search ).get( 'ar' ) === '1' ) {
 
 			window.alert( 'Immersive AR is not supported by this browser or device.' );
@@ -267,8 +275,10 @@ async function init() {
 
 	const trackGroup = buildTrack( scene, models, customCells, ! isARExperience );
 	trackGroup.visible = ! isARExperience;
+	if ( isARExperience ) trackGroup.scale.multiplyScalar( AR_CONTENT_SCALE );
 
 	const driftArenaGroup = buildDriftArena( models );
+	if ( isARExperience ) driftArenaGroup.scale.setScalar( AR_CONTENT_SCALE );
 	scene.add( driftArenaGroup );
 
 	// Probes
@@ -322,11 +332,12 @@ async function init() {
 
 	}
 
-	const sphereBody = createSphereBody( world, spawn ? spawn.position : null );
+	const sphereBody = createSphereBody( world, spawn ? spawn.position : null, isARExperience ? AR_VEHICLE_RADIUS : 0.5 );
 
 	const vehicle = new Vehicle();
 	vehicle.rigidBody = sphereBody;
 	vehicle.physicsWorld = world;
+	vehicle.visualOffset = isARExperience ? AR_VEHICLE_RADIUS : 0.5;
 
 	if ( spawn ) {
 
@@ -355,6 +366,8 @@ async function init() {
 	} );
 	toMove.forEach( ( child ) => arGroup.add( child ) );
 
+	const modeMenu = new ARModeMenu( scene );
+
 	// Preserve each web-environment object's own visibility while AR is active.
 	// Hiding on sessionstart ensures no track, decorations, NPC vehicles, or
 	// baked probes appear even during the surface-placement phase.
@@ -367,6 +380,12 @@ async function init() {
 			object.visible = false;
 
 		} );
+		if ( activeARMode === 'menu' ) {
+
+			modeMenu.show();
+			arManager.setSelectionRaysVisible( true );
+
+		}
 
 	} );
 	renderer.xr.addEventListener( 'sessionend', () => {
@@ -377,9 +396,19 @@ async function init() {
 
 		} );
 		webEnvironmentVisibility.clear();
+		modeMenu.hide();
+		arManager.setSelectionRaysVisible( false );
+		if ( homeARHost ) {
+
+			activeARMode = 'menu';
+			arManager.buildFreeRoamFloor = false;
+			arManager.setPlacementEnabled( false );
+			window.setTimeout( () => window.location.reload(), 50 );
+
+		}
 		if ( arEnterBtn ) {
 
-			arEnterBtn.textContent = `ENTER ${ arMode.toUpperCase() } AR`;
+			arEnterBtn.textContent = 'ENTER AR';
 			arEnterBtn.disabled = false;
 
 		}
@@ -388,6 +417,7 @@ async function init() {
 
 	let currentVehicleMesh = models[ 'vehicle-truck-yellow' ];
 	let vehicleGroup = vehicle.init( currentVehicleMesh );
+	if ( isARExperience ) vehicleGroup.scale.setScalar( AR_CONTENT_SCALE );
 	arGroup.add( vehicleGroup );
 
 	// Handle Car Selector UI Cards
@@ -404,6 +434,7 @@ async function init() {
 
 				arGroup.remove( vehicleGroup );
 				vehicleGroup = vehicle.init( models[ modelName ] );
+				if ( isARExperience ) vehicleGroup.scale.setScalar( AR_CONTENT_SCALE );
 				arGroup.add( vehicleGroup );
 				dirLight.target = vehicleGroup;
 
@@ -420,7 +451,13 @@ async function init() {
 	// has been confirmed, via onPlaced. Created after the arGroup reparenting
 	// above so its own objects (controllers, preview ring) stay direct
 	// children of the scene rather than being swept into arGroup.
-	arManager = new ARManager( { renderer, scene, buildFreeRoamFloor: arMode === 'free' } );
+	arManager = new ARManager( {
+		renderer,
+		scene,
+		buildFreeRoamFloor: activeARMode === 'free',
+		placementEnabled: activeARMode !== 'menu',
+		spawnHeight: isARExperience ? AR_VEHICLE_RADIUS : 0.5,
+	} );
 	arManager.setWorld( world );
 
 	arManager.onPlaced = ( { position, angle } ) => {
@@ -428,40 +465,45 @@ async function init() {
 		let vehiclePosition = position.clone();
 		let vehicleAngle = angle;
 
-		if ( arMode === 'track' ) {
+		if ( activeARMode === 'track' ) {
 
 			const offset = {
-				x: position.x - arTrackBounds.centerX,
+				x: position.x - arTrackBounds.centerX * AR_CONTENT_SCALE,
 				y: position.y,
-				z: position.z - arTrackBounds.centerZ,
+				z: position.z - arTrackBounds.centerZ * AR_CONTENT_SCALE,
+				scale: AR_CONTENT_SCALE,
 			};
-			trackGroup.position.set( offset.x, position.y - 0.5, offset.z );
+			trackGroup.position.set( offset.x, position.y - 0.5 * 0.75 * AR_CONTENT_SCALE, offset.z );
 			trackGroup.visible = true;
 			buildWallColliders( world, null, customCells, offset );
 
 			rigidBody.create( world, {
-				shape: box.create( { halfExtents: [ roadHalf, 0.01, roadHalf ] } ),
+				shape: box.create( { halfExtents: [ roadHalf * AR_CONTENT_SCALE, 0.01 * AR_CONTENT_SCALE, roadHalf * AR_CONTENT_SCALE ] } ),
 				motionType: MotionType.STATIC,
 				objectLayer: OL_STATIC,
-				position: [ position.x, position.y - 0.125, position.z ],
+				position: [ position.x, position.y - 0.01 * AR_CONTENT_SCALE, position.z ],
 				friction: 5.0,
 				restitution: 0,
 			} );
 
 			const trackSpawn = spawn || computeSpawnPosition( TRACK_CELLS );
 			vehiclePosition.set(
-				trackSpawn.position[ 0 ] + offset.x,
-				position.y + 0.5,
-				trackSpawn.position[ 2 ] + offset.z
+				trackSpawn.position[ 0 ] * AR_CONTENT_SCALE + offset.x,
+				position.y + AR_VEHICLE_RADIUS,
+				trackSpawn.position[ 2 ] * AR_CONTENT_SCALE + offset.z
 			);
 			vehicleAngle = trackSpawn.angle;
 
-		} else if ( arMode === 'arena' ) {
+		} else if ( activeARMode === 'arena' ) {
 
 			driftArenaGroup.position.set( position.x, position.y, position.z );
 			driftArenaGroup.visible = true;
-			buildDriftArenaPhysics( world, position );
-			vehiclePosition.set( position.x, position.y + 0.5, position.z + DRIFT_ARENA_RADIUS * 0.45 );
+			buildDriftArenaPhysics( world, position, AR_CONTENT_SCALE );
+			vehiclePosition.set(
+				position.x,
+				position.y + AR_VEHICLE_RADIUS,
+				position.z + DRIFT_ARENA_RADIUS * AR_CONTENT_SCALE * 0.45
+			);
 			vehicleAngle = Math.PI;
 
 		}
@@ -471,8 +513,10 @@ async function init() {
 		rigidBody.setAngularVelocity( world, sphereBody, [ 0, 0, 0 ] );
 
 		vehicle.spherePos.copy( vehiclePosition );
+		vehicle.spawnPos.copy( vehiclePosition );
+		vehicle.spawnAngle = vehicleAngle;
 		vehicle.sphereVel.set( 0, 0, 0 );
-		vehicle.prevModelPos.set( vehiclePosition.x, vehiclePosition.y - 0.5, vehiclePosition.z );
+		vehicle.prevModelPos.set( vehiclePosition.x, vehiclePosition.y - ( isARExperience ? AR_VEHICLE_RADIUS : 0.5 ), vehiclePosition.z );
 		vehicle.linearSpeed = 0;
 		vehicle.angularSpeed = 0;
 		vehicle.container.quaternion.setFromAxisAngle( new THREE.Vector3( 0, 1, 0 ), vehicleAngle );
@@ -480,6 +524,12 @@ async function init() {
 	};
 
 	if ( arEnterBtn ) arEnterBtn.disabled = false;
+	if ( homeARHost ) {
+
+		const supported = await ARManager.isSupported();
+		window.dispatchEvent( new CustomEvent( 'drifting-ar-ready', { detail: { supported } } ) );
+
+	}
 
 	const cam = new Camera();
 	scene.add( cam.debug );
@@ -538,7 +588,27 @@ async function init() {
 
 		const inAR = renderer.xr.isPresenting;
 
-		if ( inAR && frame ) arManager.update( frame, dt );
+		if ( inAR && frame ) {
+
+			if ( activeARMode === 'menu' ) {
+
+				modeMenu.placeInFrontOf( renderer.xr.getCamera() );
+				const selectedMode = modeMenu.update( arManager.controllers, arManager.gamepads );
+				if ( selectedMode ) {
+
+					activeARMode = selectedMode;
+					modeMenu.hide();
+					arManager.setSelectionRaysVisible( false );
+					arManager.buildFreeRoamFloor = activeARMode === 'free';
+					arManager.setPlacementEnabled( true );
+
+				}
+
+			}
+
+			arManager.update( frame, dt );
+
+		}
 
 		// Keyboard/touch/gamepad while driving normally; ARManager's own
 		// controller reading once a spot is confirmed; no input at all
