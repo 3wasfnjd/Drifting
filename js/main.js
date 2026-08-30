@@ -571,7 +571,7 @@ async function init() {
 		maxLife: 1.1,
 		emitInterval: 0.1,
 	} : undefined );
-	const driftMarks = new DriftMarks( scene, mapParam );
+	const driftMarks = new DriftMarks( scene, mapParam, { persist: ! isARExperience } );
 
 	const audio = new GameAudio();
 	audio.init( cam.camera, vehicleGroup );
@@ -616,6 +616,7 @@ async function init() {
 				if ( selectedMode ) {
 
 					activeARMode = selectedMode;
+					vehicle.maxSpeed = ( activeARMode === 'free' || activeARMode === 'arena' ) ? 4.0 : 3.0;
 					if ( activeARMode === 'free' ) {
 
 						arVehicleScaleFactor = Math.max( arVehicleScaleFactor, 1.5 );
@@ -701,7 +702,12 @@ async function init() {
 		if ( simulationReady ) {
 
 			particles.update( dt, vehicle );
-			driftMarks.update( dt, vehicle );
+			const markScale = isARExperience ? AR_CONTENT_SCALE * arVehicleScaleFactor : 1;
+			const fadingARMarks = isARExperience && ( activeARMode === 'free' || activeARMode === 'arena' );
+			driftMarks.update( dt, vehicle, {
+				scale: markScale,
+				fadeDuration: fadingARMarks ? 9 : null,
+			} );
 			audio.update( dt, vehicle.linearSpeed / vehicle.maxSpeed, input.z, vehicle.driftIntensity );
 
 			const hasInput = input.touchActive || Math.abs( input.x ) > 0.05 || Math.abs( input.z ) > 0.05;
