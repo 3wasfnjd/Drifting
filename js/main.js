@@ -3,7 +3,6 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { LightProbeGrid } from 'three/addons/lighting/LightProbeGrid.js';
-import { LightProbeGridHelper } from 'three/addons/helpers/LightProbeGridHelper.js';
 import { createWorldSettings, createWorld, addBroadphaseLayer, addObjectLayer, enableCollision, registerAll, updateWorld, rigidBody, box, MotionType } from 'crashcat';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { Vehicle, MAX_SPEED } from './Vehicle.js';
@@ -228,12 +227,7 @@ async function init() {
 	scene.fog.near = groundSize * 0.4;
 	scene.fog.far = groundSize * 0.8;
 
-	const sceneChildCountBeforeTrack = scene.children.length;
 	buildTrack( scene, models, customCells );
-	// buildTrack()'s first scene.add() call is the track group itself
-	// (decorations/NPC trucks are added after it) — keep a handle on it so
-	// it can be hidden during ARManager's free-roam AR (no visual track there).
-	const trackGroup = scene.children[ sceneChildCountBeforeTrack ];
 
 	// Probes
 
@@ -255,10 +249,6 @@ async function init() {
 		console.warn( 'LightProbeGrid bake skipped:', e );
 
 	}
-
-	// scene.add( new LightProbeGridHelper( probes, 0.5 ) );
-
-	//
 
 	const worldSettings = createWorldSettings();
 	worldSettings.gravity = [ 0, - 9.81, 0 ];
@@ -320,6 +310,31 @@ async function init() {
 	} );
 	toMove.forEach( ( child ) => arGroup.add( child ) );
 
+	// Preserve each web-environment object's own visibility while AR is active.
+	// Hiding on sessionstart ensures no track, decorations, NPC vehicles, or
+	// baked probes appear even during the surface-placement phase.
+	const webEnvironmentVisibility = new Map();
+	renderer.xr.addEventListener( 'sessionstart', () => {
+
+		toMove.forEach( ( object ) => {
+
+			webEnvironmentVisibility.set( object, object.visible );
+			object.visible = false;
+
+		} );
+
+	} );
+	renderer.xr.addEventListener( 'sessionend', () => {
+
+		toMove.forEach( ( object ) => {
+
+			object.visible = webEnvironmentVisibility.get( object ) ?? true;
+
+		} );
+		webEnvironmentVisibility.clear();
+
+	} );
+
 	let currentVehicleMesh = models[ 'vehicle-truck-yellow' ];
 	let vehicleGroup = vehicle.init( currentVehicleMesh );
 	arGroup.add( vehicleGroup );
@@ -349,18 +364,15 @@ async function init() {
 
 	dirLight.target = vehicleGroup;
 
-	// ARManager: free-roam AR mode. Placement (surface hit-testing, the
-	// ring/arrow preview, trigger-to-confirm) and room-furniture collision
-	// are entirely its own responsibility — main.js only reacts once a spot
+	// ARManager: free-roam AR mode. Placement (surface hit-testing and the
+	// ring/arrow preview) is its responsibility — main.js only reacts once a spot
 	// has been confirmed, via onPlaced. Created after the arGroup reparenting
 	// above so its own objects (controllers, preview ring) stay direct
 	// children of the scene rather than being swept into arGroup.
-	arManager = new ARManager( { renderer, scene, models } );
+	arManager = new ARManager( { renderer, scene } );
 	arManager.setWorld( world );
 
 	arManager.onPlaced = ( { position, angle } ) => {
-
-		trackGroup.visible = false;
 
 		rigidBody.setPosition( world, sphereBody, [ position.x, position.y, position.z ], false );
 		rigidBody.setLinearVelocity( world, sphereBody, [ 0, 0, 0 ] );
@@ -374,15 +386,6 @@ async function init() {
 		vehicle.container.quaternion.setFromAxisAngle( new THREE.Vector3( 0, 1, 0 ), angle );
 
 	};
-
-	// Track meshes come back once the player leaves the AR session (ARManager
-	// itself restores scene.background/fog; this only needs to undo the line
-	// above).
-	renderer.xr.addEventListener( 'sessionend', () => {
-
-		trackGroup.visible = true;
-
-	} );
 
 	if ( arEnterBtn ) arEnterBtn.disabled = false;
 
