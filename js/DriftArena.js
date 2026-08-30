@@ -119,7 +119,7 @@ export function buildDriftArenaPhysics( world, center ) {
 		shape: box.create( { halfExtents: [ DRIFT_ARENA_RADIUS, 0.01, DRIFT_ARENA_RADIUS ] } ),
 		motionType: MotionType.STATIC,
 		objectLayer: world._OL_STATIC,
-		position: [ center.x, center.y - 0.125, center.z ],
+		position: [ center.x, center.y - 0.01, center.z ],
 		friction: 5.0,
 		restitution: 0,
 	} );
