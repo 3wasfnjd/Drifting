@@ -84,7 +84,8 @@ class DriftTrail {
 		if ( emit && this.active ) {
 
 			const alpha = THREE.MathUtils.clamp( ( intensity - INTENSITY_MIN ) * INV_INTENSITY_RANGE, 0, 1 );
-			this._writeSegment( this.prev, _wheelWorld, alpha, true, width );
+			const minSegmentLength = MIN_SEGMENT_LENGTH * ( width / WIDTH );
+			this._writeSegment( this.prev, _wheelWorld, alpha, true, width, minSegmentLength );
 
 		}
 
@@ -93,12 +94,12 @@ class DriftTrail {
 
 	}
 
-	_writeSegment( prev, curr, alpha, markDirty, width = WIDTH ) {
+	_writeSegment( prev, curr, alpha, markDirty, width = WIDTH, minSegmentLength = MIN_SEGMENT_LENGTH ) {
 
 		_dir.subVectors( curr, prev );
 		_dir.y = 0;
 		const len = _dir.length();
-		if ( len < MIN_SEGMENT_LENGTH ) return;
+		if ( len < minSegmentLength ) return;
 		_dir.divideScalar( len );
 
 		_side.set( _dir.z, 0, - _dir.x ).multiplyScalar( width );
