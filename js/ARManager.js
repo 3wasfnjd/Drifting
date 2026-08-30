@@ -464,8 +464,19 @@ export class ARManager {
 	// the exact same {x, z} contract Vehicle.update() already expects.
 	getVehicleScaleInput() {
 
-		const axesL = this.gamepads.left ? this.gamepads.left.axes : [];
-		return - this._axis( axesL, 3 );
+		const left = this.gamepads.left;
+		if ( ! left || ! left.axes ) return 0;
+		const a3 = left.axes.length > 3 ? left.axes[ 3 ] : 0;
+		const a1 = left.axes.length > 1 ? left.axes[ 1 ] : 0;
+		const value = Math.abs( a3 ) > Math.abs( a1 ) ? a3 : a1;
+		return Math.abs( value ) > 0.25 ? - value : 0;
+
+	}
+
+	getHandbrakeHold() {
+
+		const left = this.gamepads.left;
+		return Boolean( left?.buttons?.[ 3 ]?.pressed );
 
 	}
 
