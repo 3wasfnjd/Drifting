@@ -556,7 +556,10 @@ async function init() {
 
 
 	const controls = new Controls();
-	controls.setupTouchUI();
+	// The home page hosts the AR session, but must remain an ordinary clickable
+	// menu until immersive AR starts. The full-screen touch steering layer would
+	// otherwise sit above the menu and intercept every pointer interaction.
+	if ( ! homeARHost ) controls.setupTouchUI();
 
 	const particles = new SmokeTrails( scene );
 	const driftMarks = new DriftMarks( scene, mapParam );
@@ -564,7 +567,9 @@ async function init() {
 	const audio = new GameAudio();
 	audio.init( cam.camera, vehicleGroup );
 
-	const lapTimer = new LapTimer( customCells, mapParam );
+	// Lap timing belongs to the standalone web game. Keeping it out of the home
+	// AR host prevents its absolute-positioned HUD from overlapping the menu.
+	const lapTimer = homeARHost ? null : new LapTimer( customCells, mapParam );
 
 	const _forward = new THREE.Vector3();
 	const _camLead = new THREE.Vector3();
@@ -659,7 +664,7 @@ async function init() {
 			audio.update( dt, vehicle.linearSpeed / MAX_SPEED, input.z, vehicle.driftIntensity );
 
 			const hasInput = input.touchActive || Math.abs( input.x ) > 0.05 || Math.abs( input.z ) > 0.05;
-			lapTimer.update( dt, vehicle.spherePos, hasInput );
+			if ( lapTimer ) lapTimer.update( dt, vehicle.spherePos, hasInput );
 
 		}
 
