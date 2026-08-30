@@ -12,7 +12,7 @@ const _up = new THREE.Vector3( 0, 1, 0 );
 
 const SPEED_SCALE = 12.5;
 const LINEAR_DAMP = 0.1;
-export const MAX_SPEED = 2.0;
+export const MAX_SPEED = 1.5;
 
 function lerpAngle( a, b, t ) {
 
@@ -27,11 +27,11 @@ export class Vehicle {
 
 	constructor() {
 
-		this.maxSpeed = MAX_SPEED;
 		this.linearSpeed = 0;
 		this.angularSpeed = 0;
 		this.acceleration = 0;
 
+		// AR placement compatibility; driving physics below remains upstream.
 		this.spawnPos = new THREE.Vector3( 3.5, 0.5, 5 );
 		this.spawnAngle = 0;
 		this.visualOffset = 0.5;
@@ -46,9 +46,7 @@ export class Vehicle {
 		this.prevModelPos = new THREE.Vector3( 3.5, 0, 5 );
 
 		this.container = new THREE.Group();
-		this.vehicleModel = null;
 		this.bodyNode = null;
-		this.bodyBaseY = 0;
 		this.wheels = [];
 		this.wheelFL = null;
 		this.wheelFR = null;
@@ -59,26 +57,13 @@ export class Vehicle {
 		this.inputZ = 0;
 
 		this.driftIntensity = 0;
-		this.lateralSlip = 0;
 
 	}
 
 	init( model ) {
 
-		// Reusing the same Vehicle instance for the car selector must replace the
-		// previous visual completely. Keeping old clones/wheel references caused
-		// wheels from multiple cars to overlap and appear through the bonnet.
-		if ( this.vehicleModel ) this.container.remove( this.vehicleModel );
-		this.bodyNode = null;
-		this.bodyBaseY = 0;
-		this.wheels.length = 0;
-		this.wheelFL = null;
-		this.wheelFR = null;
-		this.wheelBL = null;
-		this.wheelBR = null;
-
 		const vehicleModel = model.clone();
-		this.vehicleModel = vehicleModel;
+
 		this.container.add( vehicleModel );
 
 		// Find body and wheel nodes
@@ -90,7 +75,6 @@ export class Vehicle {
 
 				child.rotation.order = 'YXZ';
 				this.bodyNode = child;
-				this.bodyBaseY = child.position.y;
 
 			} else if ( name.includes( 'wheel' ) ) {
 
@@ -133,7 +117,7 @@ export class Vehicle {
 			const cross = _forward.x * this.inputZ - _forward.z * this.inputX;
 			this.inputX = THREE.MathUtils.clamp( - cross * 2, - 1, 1 );
 
-			this.linearSpeed = THREE.MathUtils.lerp( this.linearSpeed, this.maxSpeed, dt * 1.5 );
+			this.linearSpeed = THREE.MathUtils.lerp( this.linearSpeed, MAX_SPEED, dt * 1.5 );
 
 		} else {
 
@@ -141,18 +125,10 @@ export class Vehicle {
 			let direction = Math.sign( this.linearSpeed );
 			if ( direction === 0 ) direction = Math.abs( this.inputZ ) > 0.1 ? Math.sign( this.inputZ ) : 1;
 
-			// Give enough steering authority to initiate a drift, then reduce the
-			// yaw rate as speed rises so the car does not snap or spin instantly.
-			const speedRatio = THREE.MathUtils.clamp( Math.abs( this.linearSpeed ) / this.maxSpeed, 0, 1 );
-			const steeringAuthority = THREE.MathUtils.lerp( 0.35, 1.0, Math.min( speedRatio * 3, 1 ) );
-			const steeringRate = THREE.MathUtils.lerp( 3.2, 1.8, speedRatio );
-			const targetAngular = - this.inputX * steeringAuthority * steeringRate * direction;
-			const steeringResponse = THREE.MathUtils.lerp( 7, 4, speedRatio );
-			this.angularSpeed = THREE.MathUtils.lerp(
-				this.angularSpeed,
-				targetAngular,
-				1 - Math.exp( - steeringResponse * dt )
-			);
+			const steeringGrip = THREE.MathUtils.clamp( Math.abs( this.linearSpeed ), 0.2, 1.0 );
+
+			const targetAngular = - this.inputX * steeringGrip * 4 * direction;
+			this.angularSpeed = THREE.MathUtils.lerp( this.angularSpeed, targetAngular, dt * 4 );
 
 			this.container.rotateY( this.angularSpeed * dt );
 
@@ -168,7 +144,7 @@ export class Vehicle {
 
 			} else {
 
-				this.linearSpeed = THREE.MathUtils.lerp( this.linearSpeed, targetSpeed * this.maxSpeed, dt * 1.5 );
+				this.linearSpeed = THREE.MathUtils.lerp( this.linearSpeed, targetSpeed * MAX_SPEED, dt * 1.5 );
 
 			}
 
@@ -208,24 +184,7 @@ export class Vehicle {
 			this.spherePos.set( pos[ 0 ], pos[ 1 ], pos[ 2 ] );
 
 			const vel = this.rigidBody.motionProperties.linearVelocity;
-			const forwardVelocity = vel[ 0 ] * _forward.x + vel[ 2 ] * _forward.z;
-			const lateralVelocity = vel[ 0 ] * _right.x + vel[ 2 ] * _right.z;
-			const speedRatio = THREE.MathUtils.clamp( Math.abs( this.linearSpeed ) / this.maxSpeed, 0, 1 );
-			const driftInput = Math.abs( this.inputX ) > 0.2 && speedRatio > 0.35;
-			const targetSlip = driftInput ? - this.inputX * Math.abs( forwardVelocity ) * ( 0.35 + speedRatio * 0.35 ) : 0;
-			const gripResponse = driftInput ? 2.4 : 6.5;
-			this.lateralSlip = THREE.MathUtils.lerp(
-				this.lateralSlip,
-				targetSlip,
-				1 - Math.exp( - gripResponse * dt )
-			);
-
-			// Apply real lateral velocity so a drift follows a curved sliding path
-			// instead of only rotating the visual model around the sphere.
-			const driftVelocityX = _forward.x * forwardVelocity + _right.x * this.lateralSlip;
-			const driftVelocityZ = _forward.z * forwardVelocity + _right.z * this.lateralSlip;
-			rigidBody.setLinearVelocity( this.physicsWorld, this.rigidBody, [ driftVelocityX, vel[ 1 ], driftVelocityZ ] );
-			this.sphereVel.set( driftVelocityX, vel[ 1 ], driftVelocityZ );
+			this.sphereVel.set( vel[ 0 ], vel[ 1 ], vel[ 2 ] );
 
 		}
 
@@ -250,7 +209,6 @@ export class Vehicle {
 			this.linearSpeed = 0;
 			this.angularSpeed = 0;
 			this.acceleration = 0;
-			this.lateralSlip = 0;
 			this.container.quaternion.setFromAxisAngle( _up, this.spawnAngle );
 
 		}
@@ -271,10 +229,8 @@ export class Vehicle {
 		this.updateBody( dt );
 		this.updateWheels( dt );
 
-		const normalizedSlip = Math.abs( this.lateralSlip ) / Math.max( Math.abs( this.linearSpeed ), 0.1 );
-		this.driftIntensity = normalizedSlip * 2.2 +
-			Math.abs( this.linearSpeed - this.acceleration ) * 0.35 +
-			( this.bodyNode ? Math.abs( this.bodyNode.rotation.z ) : 0 );
+		this.driftIntensity = Math.abs( this.linearSpeed - this.acceleration ) +
+			( this.bodyNode ? Math.abs( this.bodyNode.rotation.z ) * 2 : 0 );
 
 	}
 
@@ -293,23 +249,19 @@ export class Vehicle {
 
 		if ( ! this.bodyNode ) return;
 
-		const targetPitch = THREE.MathUtils.clamp( -( this.linearSpeed - this.acceleration ) / 8, -0.08, 0.08 );
 		this.bodyNode.rotation.x = lerpAngle(
 			this.bodyNode.rotation.x,
-			targetPitch,
+			-( this.linearSpeed - this.acceleration ) / 6,
 			dt * 10
 		);
 
-		const targetRoll = THREE.MathUtils.clamp( -( this.inputX / 8 ) * this.linearSpeed, -0.12, 0.12 );
 		this.bodyNode.rotation.z = lerpAngle(
 			this.bodyNode.rotation.z,
-			targetRoll,
+			-( this.inputX / 5 ) * this.linearSpeed,
 			dt * 5
 		);
 
-		// Preserve the GLB body's authored ride height. Lowering it from 0.4 to
-		// 0.3 made the stationary wheels clip through the bonnet and fenders.
-		this.bodyNode.position.y = THREE.MathUtils.lerp( this.bodyNode.position.y, this.bodyBaseY, dt * 8 );
+		this.bodyNode.position.y = THREE.MathUtils.lerp( this.bodyNode.position.y, 0.3, dt * 5 );
 
 	}
 
@@ -317,20 +269,19 @@ export class Vehicle {
 
 		for ( const wheel of this.wheels ) {
 
-			// Time-based wheel rotation remains stable at 72, 90, or 120 Hz.
-			wheel.rotation.x += this.acceleration * SPEED_SCALE * dt;
+			wheel.rotation.x += this.acceleration;
 
 		}
 
 		if ( this.wheelFL ) {
 
-			this.wheelFL.rotation.y = lerpAngle( this.wheelFL.rotation.y, - this.inputX * THREE.MathUtils.degToRad( 25 ), dt * 10 );
+			this.wheelFL.rotation.y = lerpAngle( this.wheelFL.rotation.y, -this.inputX / 1.5, dt * 10 );
 
 		}
 
 		if ( this.wheelFR ) {
 
-			this.wheelFR.rotation.y = lerpAngle( this.wheelFR.rotation.y, - this.inputX * THREE.MathUtils.degToRad( 25 ), dt * 10 );
+			this.wheelFR.rotation.y = lerpAngle( this.wheelFR.rotation.y, -this.inputX / 1.5, dt * 10 );
 
 		}
 
