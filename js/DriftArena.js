@@ -39,7 +39,7 @@ export function buildDriftArena( models ) {
 			group,
 			[ Math.cos( angle ) * DRIFT_ARENA_RADIUS, 0.32, Math.sin( angle ) * DRIFT_ARENA_RADIUS ]
 		);
-		barrier.rotation.y = - angle;
+		barrier.rotation.y = - angle - Math.PI / 2;
 
 	}
 
@@ -59,26 +59,37 @@ export function buildDriftArena( models ) {
 
 	}
 
-	// Four floodlight towers with emissive lamps and real spotlights.
-	const towerColors = [ 0x00d8ff, 0xff5c8a, 0xffb000, 0x8b5cff ];
+	// Stadium-style floodlight towers are decorative meshes only. They do not
+	// create real lights or glowing materials, keeping AR rendering inexpensive.
+	const lampHousing = new THREE.MeshStandardMaterial( { color: 0xd7dce2, roughness: 0.72, metalness: 0.12 } );
 	for ( let i = 0; i < 4; i ++ ) {
 
 		const angle = Math.PI / 4 + i * Math.PI / 2;
 		const x = Math.cos( angle ) * 14.5;
 		const z = Math.sin( angle ) * 14.5;
-		mesh( new THREE.CylinderGeometry( 0.13, 0.2, 5.8, 8 ), metal, group, [ x, 2.9, z ] );
+		const tower = new THREE.Group();
+		tower.position.set( x, 0, z );
+		tower.rotation.y = - angle - Math.PI / 2;
+		group.add( tower );
 
-		const lampMat = new THREE.MeshStandardMaterial( {
-			color: towerColors[ i ], emissive: towerColors[ i ], emissiveIntensity: 4,
-		} );
-		const lamp = mesh( new THREE.BoxGeometry( 1.35, 0.45, 0.28 ), lampMat, group, [ x, 5.65, z ] );
-		lamp.lookAt( 0, 1.5, 0 );
+		mesh( new THREE.CylinderGeometry( 0.13, 0.2, 5.8, 8 ), metal, tower, [ 0, 2.9, 0 ] );
+		mesh( new THREE.BoxGeometry( 2.8, 0.12, 0.12 ), metal, tower, [ 0, 5.6, 0 ] );
+		mesh( new THREE.BoxGeometry( 2.5, 1.15, 0.12 ), metal, tower, [ 0, 5.95, 0 ] );
 
-		const light = new THREE.SpotLight( towerColors[ i ], 28, 34, Math.PI / 5, 0.55, 1.3 );
-		light.position.set( x, 5.5, z );
-		light.target.position.set( 0, 0, 0 );
-		light.castShadow = false;
-		group.add( light, light.target );
+		for ( let row = 0; row < 2; row ++ ) {
+
+			for ( let column = 0; column < 5; column ++ ) {
+
+				mesh(
+					new THREE.BoxGeometry( 0.38, 0.38, 0.16 ),
+					lampHousing,
+					tower,
+					[ ( column - 2 ) * 0.47, 5.72 + row * 0.48, -0.12 ]
+				);
+
+			}
+
+		}
 
 	}
 
@@ -140,7 +151,12 @@ export function buildDriftArenaPhysics( world, center, scale = 1 ) {
 				center.y + 0.55 * scale,
 				center.z + Math.sin( angle ) * radius,
 			],
-			quaternion: [ 0, Math.sin( - angle / 2 ), 0, Math.cos( - angle / 2 ) ],
+			quaternion: [
+				0,
+				Math.sin( ( - angle - Math.PI / 2 ) / 2 ),
+				0,
+				Math.cos( ( - angle - Math.PI / 2 ) / 2 ),
+			],
 			friction: 0.2,
 			restitution: 0.25,
 		} );
