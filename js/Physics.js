@@ -14,7 +14,11 @@ function addDebugBox( group, halfExtents, position, quaternion ) {
 
 }
 
-export function buildWallColliders( world, debugGroup, customCells ) {
+export function buildWallColliders( world, debugGroup, customCells, offset = null ) {
+
+	const ox = offset?.x || 0;
+	const oy = offset?.y || 0;
+	const oz = offset?.z || 0;
 
 	const S = GRID_SCALE;
 	const CELL_HALF = CELL_RAW / 2;
@@ -45,9 +49,9 @@ export function buildWallColliders( world, debugGroup, customCells ) {
 			const aMid = arcStart + ( ( i + 0.5 ) / numSeg ) * ARC_SPAN;
 			const halfExtents = [ hThick, hHeight, segHalfLen ];
 			const position = [
-				wcx + radius * Math.cos( aMid ) * S,
-				wallY,
-				wcz + radius * Math.sin( aMid ) * S
+				wcx + radius * Math.cos( aMid ) * S + ox,
+				wallY + oy,
+				wcz + radius * Math.sin( aMid ) * S + oz
 			];
 			const quaternion = [ 0, Math.sin( - aMid / 2 ), 0, Math.cos( - aMid / 2 ) ];
 
@@ -88,7 +92,7 @@ export function buildWallColliders( world, debugGroup, customCells ) {
 				const wx = cx + ( lx * cr ) * S;
 				const wz = cz + ( - lx * sr ) * S;
 				const halfExtents = [ hThick, hHeight, hLen ];
-				const position = [ wx, wallY, wz ];
+				const position = [ wx + ox, wallY + oy, wz + oz ];
 				const quaternion = [ 0, Math.sin( rad / 2 ), 0, Math.cos( rad / 2 ) ];
 
 				rigidBody.create( world, {

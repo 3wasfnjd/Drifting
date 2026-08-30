@@ -115,13 +115,14 @@ const NPC_TRUCKS = [
 	[ 'vehicle-truck-red',    -1.36, -0.15, -23.80, 155.9 ],
 ];
 
-export function buildTrack( scene, models, customCells ) {
+export function buildTrack( scene, models, customCells, includeEnvironment = true ) {
 
 	const trackGroup = new THREE.Group();
 	trackGroup.position.y = -0.5;
 
 	const trackPieceGroup = new THREE.Group();
 	const decoGroup = new THREE.Group();
+	decoGroup.visible = includeEnvironment;
 
 	const cells = customCells || TRACK_CELLS;
 
@@ -277,7 +278,7 @@ export function buildTrack( scene, models, customCells ) {
 
 	} );
 
-	if ( ! customCells ) {
+	if ( ! customCells && includeEnvironment ) {
 
 		for ( const [ key, x, y, z, rotDeg ] of NPC_TRUCKS ) {
 
@@ -302,6 +303,8 @@ export function buildTrack( scene, models, customCells ) {
 		}
 
 	}
+
+	return trackGroup;
 
 }
 

@@ -7,7 +7,7 @@ import { createWorldSettings, createWorld, addBroadphaseLayer, addObjectLayer, e
 import { Vehicle, MAX_SPEED } from './Vehicle.js';
 import { Camera } from './Camera.js';
 import { Controls } from './Controls.js';
-import { buildTrack, decodeCells, computeSpawnPosition, computeTrackBounds } from './Track.js';
+import { buildTrack, decodeCells, computeSpawnPosition, computeTrackBounds, TRACK_CELLS } from './Track.js';
 import { buildWallColliders, createSphereBody } from './Physics.js';
 import { SmokeTrails } from './Particles.js';
 import { DriftMarks } from './DriftMarks.js';
@@ -15,7 +15,12 @@ import { GameAudio } from './Audio.js';
 import { LapTimer } from './LapTimer.js';
 import { ARManager } from './ARManager.js';
 import { ColorMapGLTFLoader } from './Loader.js';
+import { buildDriftArena, buildDriftArenaPhysics, DRIFT_ARENA_RADIUS } from './DriftArena.js';
 
+const pageParams = new URLSearchParams( window.location.search );
+const requestedARMode = pageParams.get( 'arMode' );
+const arMode = [ 'free', 'track', 'arena' ].includes( requestedARMode ) ? requestedARMode : 'free';
+const isARExperience = pageParams.get( 'ar' ) === '1';
 
 const renderer = new THREE.WebGLRenderer( { antialias: true, outputBufferType: THREE.HalfFloatType, alpha: true } );
 renderer.xr.enabled = true;
@@ -79,7 +84,7 @@ async function enterAR() {
 	} catch ( error ) {
 
 		console.error( '[AR] Unable to start immersive-ar session:', error );
-		arEnterBtn.textContent = 'ENTER AR';
+		arEnterBtn.textContent = `ENTER ${ arMode.toUpperCase() } AR`;
 		arEnterBtn.disabled = false;
 		window.alert( 'AR could not start. Use a WebXR AR-compatible browser and allow the requested XR permissions.' );
 
@@ -101,7 +106,7 @@ function setupDOM() {
 
 	arEnterBtn = document.createElement( 'button' );
 	arEnterBtn.id = 'ARButton';
-	arEnterBtn.textContent = 'ENTER AR';
+	arEnterBtn.textContent = `ENTER ${ arMode.toUpperCase() } AR`;
 	arEnterBtn.disabled = true; // enabled once arManager is ready (see init())
 	arEnterBtn.addEventListener( 'click', () => {
 
@@ -114,7 +119,7 @@ function setupDOM() {
 
 	ARManager.isSupported().then( ( supported ) => {
 
-		arEnterBtn.dataset.supported = supported ? 'true' : 'false';
+		arEnterBtn.dataset.supported = supported && isARExperience ? 'true' : 'false';
 		if ( ! supported && new URLSearchParams( window.location.search ).get( 'ar' ) === '1' ) {
 
 			window.alert( 'Immersive AR is not supported by this browser or device.' );
@@ -224,7 +229,7 @@ async function init() {
 	registerAll();
 	await loadModels();
 
-	const mapParam = new URLSearchParams( window.location.search ).get( 'map' );
+	const mapParam = pageParams.get( 'map' );
 	let customCells = null;
 	let spawn = null;
 
@@ -245,6 +250,7 @@ async function init() {
 
 	// Compute track bounds and size physics/shadows to fit
 	const bounds = computeTrackBounds( customCells );
+	const arTrackBounds = computeTrackBounds( customCells || TRACK_CELLS );
 	const hw = bounds.halfWidth;
 	const hd = bounds.halfDepth;
 	const groundSize = Math.max( hw, hd ) * 2 + 20;
@@ -259,7 +265,11 @@ async function init() {
 	scene.fog.near = groundSize * 0.4;
 	scene.fog.far = groundSize * 0.8;
 
-	buildTrack( scene, models, customCells );
+	const trackGroup = buildTrack( scene, models, customCells, ! isARExperience );
+	trackGroup.visible = ! isARExperience;
+
+	const driftArenaGroup = buildDriftArena( models );
+	scene.add( driftArenaGroup );
 
 	// Probes
 
@@ -297,17 +307,20 @@ async function init() {
 	world._OL_MOVING = OL_MOVING;
 	world._OL_STATIC = OL_STATIC;
 
-	buildWallColliders( world, null, customCells );
-
 	const roadHalf = groundSize / 2;
-	rigidBody.create( world, {
-		shape: box.create( { halfExtents: [ roadHalf, 0.01, roadHalf ] } ),
-		motionType: MotionType.STATIC,
-		objectLayer: OL_STATIC,
-		position: [ bounds.centerX, - 0.125, bounds.centerZ ],
-		friction: 5.0,
-		restitution: 0.0,
-	} );
+	if ( ! isARExperience ) {
+
+		buildWallColliders( world, null, customCells );
+		rigidBody.create( world, {
+			shape: box.create( { halfExtents: [ roadHalf, 0.01, roadHalf ] } ),
+			motionType: MotionType.STATIC,
+			objectLayer: OL_STATIC,
+			position: [ bounds.centerX, - 0.125, bounds.centerZ ],
+			friction: 5.0,
+			restitution: 0.0,
+		} );
+
+	}
 
 	const sphereBody = createSphereBody( world, spawn ? spawn.position : null );
 
@@ -366,7 +379,7 @@ async function init() {
 		webEnvironmentVisibility.clear();
 		if ( arEnterBtn ) {
 
-			arEnterBtn.textContent = 'ENTER AR';
+			arEnterBtn.textContent = `ENTER ${ arMode.toUpperCase() } AR`;
 			arEnterBtn.disabled = false;
 
 		}
@@ -407,21 +420,62 @@ async function init() {
 	// has been confirmed, via onPlaced. Created after the arGroup reparenting
 	// above so its own objects (controllers, preview ring) stay direct
 	// children of the scene rather than being swept into arGroup.
-	arManager = new ARManager( { renderer, scene } );
+	arManager = new ARManager( { renderer, scene, buildFreeRoamFloor: arMode === 'free' } );
 	arManager.setWorld( world );
 
 	arManager.onPlaced = ( { position, angle } ) => {
 
-		rigidBody.setPosition( world, sphereBody, [ position.x, position.y, position.z ], false );
+		let vehiclePosition = position.clone();
+		let vehicleAngle = angle;
+
+		if ( arMode === 'track' ) {
+
+			const offset = {
+				x: position.x - arTrackBounds.centerX,
+				y: position.y,
+				z: position.z - arTrackBounds.centerZ,
+			};
+			trackGroup.position.set( offset.x, position.y - 0.5, offset.z );
+			trackGroup.visible = true;
+			buildWallColliders( world, null, customCells, offset );
+
+			rigidBody.create( world, {
+				shape: box.create( { halfExtents: [ roadHalf, 0.01, roadHalf ] } ),
+				motionType: MotionType.STATIC,
+				objectLayer: OL_STATIC,
+				position: [ position.x, position.y - 0.125, position.z ],
+				friction: 5.0,
+				restitution: 0,
+			} );
+
+			const trackSpawn = spawn || computeSpawnPosition( TRACK_CELLS );
+			vehiclePosition.set(
+				trackSpawn.position[ 0 ] + offset.x,
+				position.y + 0.5,
+				trackSpawn.position[ 2 ] + offset.z
+			);
+			vehicleAngle = trackSpawn.angle;
+
+		} else if ( arMode === 'arena' ) {
+
+			driftArenaGroup.position.set( position.x, position.y, position.z );
+			driftArenaGroup.visible = true;
+			buildDriftArenaPhysics( world, position );
+			vehiclePosition.set( position.x, position.y + 0.5, position.z + DRIFT_ARENA_RADIUS * 0.45 );
+			vehicleAngle = Math.PI;
+
+		}
+
+		rigidBody.setPosition( world, sphereBody, [ vehiclePosition.x, vehiclePosition.y, vehiclePosition.z ], false );
 		rigidBody.setLinearVelocity( world, sphereBody, [ 0, 0, 0 ] );
 		rigidBody.setAngularVelocity( world, sphereBody, [ 0, 0, 0 ] );
 
-		vehicle.spherePos.copy( position );
+		vehicle.spherePos.copy( vehiclePosition );
 		vehicle.sphereVel.set( 0, 0, 0 );
-		vehicle.prevModelPos.set( position.x, position.y - 0.5, position.z );
+		vehicle.prevModelPos.set( vehiclePosition.x, vehiclePosition.y - 0.5, vehiclePosition.z );
 		vehicle.linearSpeed = 0;
 		vehicle.angularSpeed = 0;
-		vehicle.container.quaternion.setFromAxisAngle( new THREE.Vector3( 0, 1, 0 ), angle );
+		vehicle.container.quaternion.setFromAxisAngle( new THREE.Vector3( 0, 1, 0 ), vehicleAngle );
 
 	};
 
