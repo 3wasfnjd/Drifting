@@ -12,7 +12,7 @@ const _up = new THREE.Vector3( 0, 1, 0 );
 
 const SPEED_SCALE = 12.5;
 const LINEAR_DAMP = 0.1;
-export const MAX_SPEED = 3.0;
+export const MAX_SPEED = 2.0;
 
 function lerpAngle( a, b, t ) {
 
@@ -27,6 +27,7 @@ export class Vehicle {
 
 	constructor() {
 
+		this.maxSpeed = MAX_SPEED;
 		this.linearSpeed = 0;
 		this.angularSpeed = 0;
 		this.acceleration = 0;
@@ -47,6 +48,7 @@ export class Vehicle {
 		this.container = new THREE.Group();
 		this.vehicleModel = null;
 		this.bodyNode = null;
+		this.bodyBaseY = 0;
 		this.wheels = [];
 		this.wheelFL = null;
 		this.wheelFR = null;
@@ -67,6 +69,7 @@ export class Vehicle {
 		// wheels from multiple cars to overlap and appear through the bonnet.
 		if ( this.vehicleModel ) this.container.remove( this.vehicleModel );
 		this.bodyNode = null;
+		this.bodyBaseY = 0;
 		this.wheels.length = 0;
 		this.wheelFL = null;
 		this.wheelFR = null;
@@ -86,6 +89,7 @@ export class Vehicle {
 
 				child.rotation.order = 'YXZ';
 				this.bodyNode = child;
+				this.bodyBaseY = child.position.y;
 
 			} else if ( name.includes( 'wheel' ) ) {
 
@@ -128,7 +132,7 @@ export class Vehicle {
 			const cross = _forward.x * this.inputZ - _forward.z * this.inputX;
 			this.inputX = THREE.MathUtils.clamp( - cross * 2, - 1, 1 );
 
-			this.linearSpeed = THREE.MathUtils.lerp( this.linearSpeed, MAX_SPEED, dt * 1.5 );
+			this.linearSpeed = THREE.MathUtils.lerp( this.linearSpeed, this.maxSpeed, dt * 1.5 );
 
 		} else {
 
@@ -138,7 +142,7 @@ export class Vehicle {
 
 			// Give enough steering authority to initiate a drift, then reduce the
 			// yaw rate as speed rises so the car does not snap or spin instantly.
-			const speedRatio = THREE.MathUtils.clamp( Math.abs( this.linearSpeed ) / MAX_SPEED, 0, 1 );
+			const speedRatio = THREE.MathUtils.clamp( Math.abs( this.linearSpeed ) / this.maxSpeed, 0, 1 );
 			const steeringAuthority = THREE.MathUtils.lerp( 0.35, 1.0, Math.min( speedRatio * 3, 1 ) );
 			const steeringRate = THREE.MathUtils.lerp( 3.2, 1.8, speedRatio );
 			const targetAngular = - this.inputX * steeringAuthority * steeringRate * direction;
@@ -163,7 +167,7 @@ export class Vehicle {
 
 			} else {
 
-				this.linearSpeed = THREE.MathUtils.lerp( this.linearSpeed, targetSpeed * MAX_SPEED, dt * 1.5 );
+				this.linearSpeed = THREE.MathUtils.lerp( this.linearSpeed, targetSpeed * this.maxSpeed, dt * 1.5 );
 
 			}
 
@@ -268,19 +272,23 @@ export class Vehicle {
 
 		if ( ! this.bodyNode ) return;
 
+		const targetPitch = THREE.MathUtils.clamp( -( this.linearSpeed - this.acceleration ) / 8, -0.08, 0.08 );
 		this.bodyNode.rotation.x = lerpAngle(
 			this.bodyNode.rotation.x,
-			-( this.linearSpeed - this.acceleration ) / 6,
+			targetPitch,
 			dt * 10
 		);
 
+		const targetRoll = THREE.MathUtils.clamp( -( this.inputX / 8 ) * this.linearSpeed, -0.12, 0.12 );
 		this.bodyNode.rotation.z = lerpAngle(
 			this.bodyNode.rotation.z,
-			-( this.inputX / 5 ) * this.linearSpeed,
+			targetRoll,
 			dt * 5
 		);
 
-		this.bodyNode.position.y = THREE.MathUtils.lerp( this.bodyNode.position.y, 0.3, dt * 5 );
+		// Preserve the GLB body's authored ride height. Lowering it from 0.4 to
+		// 0.3 made the stationary wheels clip through the bonnet and fenders.
+		this.bodyNode.position.y = THREE.MathUtils.lerp( this.bodyNode.position.y, this.bodyBaseY, dt * 8 );
 
 	}
 
