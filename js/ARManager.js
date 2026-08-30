@@ -17,11 +17,13 @@ const ROTATE_SPEED = 1.2; // rad/s at full stick deflection
 
 export class ARManager {
 
-	constructor( { renderer, scene, buildFreeRoamFloor = true } ) {
+	constructor( { renderer, scene, buildFreeRoamFloor = true, placementEnabled = true, spawnHeight = 0.5 } ) {
 
 		this.renderer = renderer;
 		this.scene = scene;
 		this.buildFreeRoamFloor = buildFreeRoamFloor;
+		this.placementEnabled = placementEnabled;
+		this.spawnHeight = spawnHeight;
 		this.session = null;
 		this.hitTestSource = null;
 		this.hitTestSourceRequested = false;
@@ -40,6 +42,7 @@ export class ARManager {
 
 		this.gamepads = { left: null, right: null };
 		this.controllers = { left: null, right: null };
+		this.selectionRaysVisible = false;
 		this._prevTrigger = { left: false, right: false };
 
 		this.controllerModelFactory = new XRControllerModelFactory();
@@ -100,7 +103,7 @@ export class ARManager {
 		this.scene.background = null; // let passthrough show through
 		this.scene.fog = null;
 
-		this.previewGroup.visible = true;
+		this.previewGroup.visible = this.placementEnabled;
 
 		console.log( '[ARManager] AR session started. environmentBlendMode:', session.environmentBlendMode );
 
@@ -120,6 +123,7 @@ export class ARManager {
 				const hand = event.data.handedness === 'left' ? 'left' : 'right';
 				this.gamepads[ hand ] = event.data.gamepad || null;
 				this.controllers[ hand ] = controller;
+				if ( controller.userData.selectionRay ) controller.userData.selectionRay.visible = this.selectionRaysVisible;
 
 			} );
 			controller.addEventListener( 'disconnected', ( event ) => {
@@ -129,6 +133,13 @@ export class ARManager {
 
 			} );
 			this.scene.add( controller );
+			const ray = new THREE.Line(
+				new THREE.BufferGeometry().setFromPoints( [ new THREE.Vector3(), new THREE.Vector3( 0, 0, -3 ) ] ),
+				new THREE.LineBasicMaterial( { color: 0x66ddff, transparent: true, opacity: 0.75 } )
+			);
+			ray.visible = false;
+			controller.userData.selectionRay = ray;
+			controller.add( ray );
 
 			const grip = this.renderer.xr.getControllerGrip( i );
 			this.scene.add( grip );
@@ -145,6 +156,17 @@ export class ARManager {
 				console.warn( 'Controller model failed to load (non-fatal):', e );
 
 			}
+
+		}
+
+	}
+
+	setSelectionRaysVisible( visible ) {
+
+		this.selectionRaysVisible = visible;
+		for ( const controller of Object.values( this.controllers ) ) {
+
+			if ( controller?.userData.selectionRay ) controller.userData.selectionRay.visible = visible;
 
 		}
 
@@ -197,7 +219,7 @@ export class ARManager {
 			const refSpace = this.renderer.xr.getReferenceSpace();
 			this._ensureHitTestSource();
 
-			if ( ! this.placed ) {
+			if ( this.placementEnabled && ! this.placed ) {
 
 				this._updatePlacement( frame, refSpace, dt );
 
@@ -208,6 +230,14 @@ export class ARManager {
 			console.error( '[ARManager] update() error:', e );
 
 		}
+
+	}
+
+	setPlacementEnabled( enabled ) {
+
+		this.placementEnabled = enabled;
+		this.hasHit = false;
+		this.previewGroup.visible = false;
 
 	}
 
@@ -372,11 +402,12 @@ export class ARManager {
 		// ─────────────────────────────────────────────────────────
 
 		const halfW = AR_FLOOR_HALF_SIZE, halfD = AR_FLOOR_HALF_SIZE;
-		const floorY = this.arPosition.y - 0.125;
+		const floorHalfThickness = Math.min( 0.01, this.spawnHeight * 0.25 );
+		const floorY = this.arPosition.y - floorHalfThickness;
 		const cx = this.arPosition.x, cz = this.arPosition.z;
 
 		rigidBody.create( this.world, {
-			shape: box.create( { halfExtents: [ halfW, 0.01, halfD ] } ),
+			shape: box.create( { halfExtents: [ halfW, floorHalfThickness, halfD ] } ),
 			motionType: MotionType.STATIC,
 			objectLayer: this.world._OL_STATIC,
 			position: [ cx, floorY, cz ],
@@ -402,7 +433,7 @@ export class ARManager {
 		// the floor (see Track.js computeSpawnPosition) rather than exactly
 		// at the detected floor height, which left it embedded in the floor.
 		const position = this.arPosition.clone();
-		position.y += 0.5;
+		position.y += this.spawnHeight;
 
 		return { position, angle: yaw };
 
