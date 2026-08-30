@@ -614,6 +614,12 @@ async function init() {
 				if ( selectedMode ) {
 
 					activeARMode = selectedMode;
+					if ( activeARMode === 'free' ) {
+
+						arVehicleScaleFactor = Math.max( arVehicleScaleFactor, 1.5 );
+						vehicleGroup.scale.setScalar( AR_CONTENT_SCALE * arVehicleScaleFactor );
+
+					}
 					modeMenu.hide();
 					arManager.setSelectionRaysVisible( false );
 					arManager.buildFreeRoamFloor = activeARMode === 'free';
