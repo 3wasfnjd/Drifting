@@ -12,7 +12,7 @@ const _up = new THREE.Vector3( 0, 1, 0 );
 
 const SPEED_SCALE = 12.5;
 const LINEAR_DAMP = 0.1;
-export const MAX_SPEED = 1.5;
+export const MAX_SPEED = 2.25;
 
 function lerpAngle( a, b, t ) {
 
