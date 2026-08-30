@@ -133,7 +133,7 @@ export function buildTrack( scene, models, customCells, includeEnvironment = tru
 
 	}
 
-	{
+	if ( includeEnvironment ) {
 
 		const occupied = new Set();
 		let minX = Infinity, maxX = - Infinity;

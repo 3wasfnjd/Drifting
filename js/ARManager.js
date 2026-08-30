@@ -44,6 +44,7 @@ export class ARManager {
 		this.controllers = { left: null, right: null };
 		this.selectionRaysVisible = false;
 		this._prevTrigger = { left: false, right: false };
+		this.placementTriggerArmed = false;
 
 		this.controllerModelFactory = new XRControllerModelFactory();
 		this._setupControllers();
@@ -87,6 +88,7 @@ export class ARManager {
 		this.placed = false;
 		this._prevTrigger.left = false;
 		this._prevTrigger.right = false;
+		this.placementTriggerArmed = false;
 
 		const session = pendingSession ? await pendingSession : await navigator.xr.requestSession( 'immersive-ar', {
 			requiredFeatures: [ 'local-floor', 'hit-test' ],
@@ -236,6 +238,7 @@ export class ARManager {
 	setPlacementEnabled( enabled ) {
 
 		this.placementEnabled = enabled;
+		this.placementTriggerArmed = false;
 		this.hasHit = false;
 		this.previewGroup.visible = false;
 
@@ -268,6 +271,14 @@ export class ARManager {
 		this.previewGroup.visible = this.hasHit;
 
 		// Confirm / lock
+		if ( ! this.placementTriggerArmed ) {
+
+			const pressed = this._syncTriggerState();
+			if ( ! pressed ) this.placementTriggerArmed = true;
+			return;
+
+		}
+
 		if ( this.hasHit && this._triggerPressedEdge() ) {
 
 			this._confirmPlacement();
@@ -373,6 +384,16 @@ export class ARManager {
 		this._prevTrigger.left = lTrig;
 
 		return rEdge || lEdge;
+
+	}
+
+	_syncTriggerState() {
+
+		const right = Boolean( this.gamepads.right?.buttons?.[ 0 ]?.pressed );
+		const left = Boolean( this.gamepads.left?.buttons?.[ 0 ]?.pressed );
+		this._prevTrigger.right = right;
+		this._prevTrigger.left = left;
+		return right || left;
 
 	}
 

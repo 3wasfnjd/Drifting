@@ -208,8 +208,7 @@ export class Vehicle {
 			this.linearSpeed = 0;
 			this.angularSpeed = 0;
 			this.acceleration = 0;
-			this.container.rotation.set( 0, 0, 0 );
-			this.container.quaternion.identity();
+			this.container.quaternion.setFromAxisAngle( _up, this.spawnAngle );
 
 		}
 

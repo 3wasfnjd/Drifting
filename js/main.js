@@ -185,7 +185,8 @@ const models = {};
 
 async function loadModels() {
 
-	const promises = modelNames.map( ( name ) =>
+	const namesToLoad = isARExperience ? modelNames.filter( name => ! name.startsWith( 'decoration-' ) ) : modelNames;
+	const promises = namesToLoad.map( ( name ) =>
 		new Promise( ( resolve, reject ) => {
 
 			loader.load( `models/${ name }.glb`, ( gltf ) => {
@@ -281,24 +282,28 @@ async function init() {
 	if ( isARExperience ) driftArenaGroup.scale.setScalar( AR_CONTENT_SCALE );
 	scene.add( driftArenaGroup );
 
-	// Probes
+	// The baked probe grid is useful for the web track, but expensive and
+	// invisible in passthrough AR. Skip it on the home AR host.
+	if ( ! isARExperience ) {
 
-	const probeHeight = 6;
-	try {
+		const probeHeight = 6;
+		try {
 
-		const probes = new LightProbeGrid(
-			hw * 2, probeHeight, hd * 2,
-			Math.max( 4, Math.round( hw / 4 ) ),
-			2,
-			Math.max( 4, Math.round( hd / 4 ) ),
-		);
-		probes.position.set( bounds.centerX, probeHeight / 2, bounds.centerZ );
-		probes.bake( renderer, scene, { cubemapSize: 32, near: 0.1, far: groundSize } );
-		scene.add( probes );
+			const probes = new LightProbeGrid(
+				hw * 2, probeHeight, hd * 2,
+				Math.max( 4, Math.round( hw / 4 ) ),
+				2,
+				Math.max( 4, Math.round( hd / 4 ) ),
+			);
+			probes.position.set( bounds.centerX, probeHeight / 2, bounds.centerZ );
+			probes.bake( renderer, scene, { cubemapSize: 32, near: 0.1, far: groundSize } );
+			scene.add( probes );
 
-	} catch ( e ) {
+		} catch ( e ) {
 
-		console.warn( 'LightProbeGrid bake skipped:', e );
+			console.warn( 'LightProbeGrid bake skipped:', e );
+
+		}
 
 	}
 
@@ -624,9 +629,13 @@ async function init() {
 
 		}
 
-		updateWorld( world, contactListener, dt );
+		const simulationReady = ! isARExperience || ( inAR && arManager.isPlaced() );
+		if ( simulationReady ) {
 
-		vehicle.update( dt, input );
+			updateWorld( world, contactListener, dt );
+			vehicle.update( dt, input );
+
+		}
 
 		dirLight.position.set(
 			vehicle.spherePos.x + 11.4,
@@ -643,12 +652,16 @@ async function init() {
 
 		}
 
-		particles.update( dt, vehicle );
-		driftMarks.update( dt, vehicle );
-		audio.update( dt, vehicle.linearSpeed / MAX_SPEED, input.z, vehicle.driftIntensity );
+		if ( simulationReady ) {
 
-		const hasInput = input.touchActive || Math.abs( input.x ) > 0.05 || Math.abs( input.z ) > 0.05;
-		lapTimer.update( dt, vehicle.spherePos, hasInput );
+			particles.update( dt, vehicle );
+			driftMarks.update( dt, vehicle );
+			audio.update( dt, vehicle.linearSpeed / MAX_SPEED, input.z, vehicle.driftIntensity );
+
+			const hasInput = input.touchActive || Math.abs( input.x ) > 0.05 || Math.abs( input.z ) > 0.05;
+			lapTimer.update( dt, vehicle.spherePos, hasInput );
+
+		}
 
 
 		if ( composer && ! renderer.xr.isPresenting ) {
