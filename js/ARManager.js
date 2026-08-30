@@ -17,10 +17,11 @@ const ROTATE_SPEED = 1.2; // rad/s at full stick deflection
 
 export class ARManager {
 
-	constructor( { renderer, scene } ) {
+	constructor( { renderer, scene, buildFreeRoamFloor = true } ) {
 
 		this.renderer = renderer;
 		this.scene = scene;
+		this.buildFreeRoamFloor = buildFreeRoamFloor;
 		this.session = null;
 		this.hitTestSource = null;
 		this.hitTestSourceRequested = false;
@@ -350,7 +351,7 @@ export class ARManager {
 		this.placed = true;
 		this.previewGroup.visible = false;
 
-		if ( this.world ) {
+		if ( this.world && this.buildFreeRoamFloor ) {
 
 			this._buildFreeRoamFloor();
 
