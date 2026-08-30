@@ -57,6 +57,7 @@ export class ARModeMenu {
 		this.cards = [];
 		this.placed = false;
 		this.previousPressed = { left: false, right: false };
+		this.armed = false;
 		this.raycaster = new THREE.Raycaster();
 		this.rayOrigin = new THREE.Vector3();
 		this.rayDirection = new THREE.Vector3();
@@ -91,6 +92,7 @@ export class ARModeMenu {
 		this.placed = false;
 		this.previousPressed.left = false;
 		this.previousPressed.right = false;
+		this.armed = false;
 
 	}
 
@@ -119,6 +121,8 @@ export class ARModeMenu {
 		if ( ! this.group.visible ) return null;
 
 		let hovered = null;
+		let anyPressed = false;
+		let selectedMode = null;
 		for ( const hand of [ 'left', 'right' ] ) {
 
 			const controller = controllers[ hand ];
@@ -132,9 +136,10 @@ export class ARModeMenu {
 			if ( hit ) hovered = hit.object;
 
 			const pressed = Boolean( gamepads[ hand ]?.buttons?.[ 0 ]?.pressed );
+			anyPressed ||= pressed;
 			const edge = pressed && ! this.previousPressed[ hand ];
 			this.previousPressed[ hand ] = pressed;
-			if ( edge && hit ) return hit.object.userData.arMode;
+			if ( this.armed && edge && hit ) selectedMode = hit.object.userData.arMode;
 
 		}
 
@@ -145,7 +150,9 @@ export class ARModeMenu {
 
 		}
 
-		return null;
+		if ( ! anyPressed ) this.armed = true;
+
+		return selectedMode;
 
 	}
 
