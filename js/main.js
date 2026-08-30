@@ -341,7 +341,7 @@ async function init() {
 
 	const vehicle = new Vehicle();
 	// Web mode uses a calmer top speed; AR keeps the faster room-scale pace.
-	vehicle.maxSpeed = isARExperience ? 3.0 : MAX_SPEED;
+	vehicle.maxSpeed = isARExperience && ( activeARMode === 'free' || activeARMode === 'arena' ) ? 4.0 : ( isARExperience ? 3.0 : MAX_SPEED );
 	vehicle.rigidBody = sphereBody;
 	vehicle.physicsWorld = world;
 	vehicle.visualOffset = isARExperience ? AR_VEHICLE_RADIUS : 0.5;
