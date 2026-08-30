@@ -22,7 +22,7 @@ export function buildDriftArena( models ) {
 
 	const asphalt = new THREE.MeshStandardMaterial( { color: 0x252931, roughness: 0.94, metalness: 0.02 } );
 	const curbDark = new THREE.MeshStandardMaterial( { color: 0x17191e, roughness: 0.8 } );
-	const curbOrange = new THREE.MeshStandardMaterial( { color: 0xff6a00, roughness: 0.65 } );
+	const curbYellow = new THREE.MeshStandardMaterial( { color: 0xffd400, roughness: 0.68 } );
 	const metal = new THREE.MeshStandardMaterial( { color: 0x303640, roughness: 0.55, metalness: 0.45 } );
 	const tireMat = new THREE.MeshStandardMaterial( { color: 0x090a0c, roughness: 0.92 } );
 
@@ -30,32 +30,19 @@ export function buildDriftArena( models ) {
 	floor.castShadow = false;
 
 	const ringSegments = 48;
+	// Use a slightly shortened chord so adjacent alternating blocks never
+	// overlap and flicker at their shared edges.
+	const barrierLength = 2 * DRIFT_ARENA_RADIUS * Math.sin( Math.PI / ringSegments ) * 0.96;
 	for ( let i = 0; i < ringSegments; i ++ ) {
 
 		const angle = i / ringSegments * Math.PI * 2;
 		const barrier = mesh(
-			new THREE.BoxGeometry( 2.45, 0.65, 0.42 ),
-			i % 2 === 0 ? curbOrange : curbDark,
+			new THREE.BoxGeometry( barrierLength, 0.65, 0.42 ),
+			i % 2 === 0 ? curbYellow : curbDark,
 			group,
 			[ Math.cos( angle ) * DRIFT_ARENA_RADIUS, 0.32, Math.sin( angle ) * DRIFT_ARENA_RADIUS ]
 		);
 		barrier.rotation.y = - angle - Math.PI / 2;
-
-	}
-
-	// Central tyre stacks leave a broad circular drift lane around them.
-	for ( let stack = 0; stack < 5; stack ++ ) {
-
-		const angle = stack / 5 * Math.PI * 2;
-		for ( let level = 0; level < 3; level ++ ) {
-
-			const tyre = mesh(
-				new THREE.TorusGeometry( 0.48, 0.18, 10, 24 ), tireMat, group,
-				[ Math.cos( angle ) * 2.2, 0.2 + level * 0.28, Math.sin( angle ) * 2.2 ]
-			);
-			tyre.rotation.x = Math.PI / 2;
-
-		}
 
 	}
 
@@ -73,6 +60,15 @@ export function buildDriftArena( models ) {
 		group.add( tower );
 
 		mesh( new THREE.CylinderGeometry( 0.13, 0.2, 5.8, 8 ), metal, tower, [ 0, 2.9, 0 ] );
+
+		// Tyres sit around the base of each floodlight column instead of
+		// obstructing the middle of the drift arena.
+		for ( let level = 0; level < 3; level ++ ) {
+
+			const tyre = mesh( new THREE.TorusGeometry( 0.48, 0.18, 10, 24 ), tireMat, tower, [ 0, 0.2 + level * 0.28, 0 ] );
+			tyre.rotation.x = Math.PI / 2;
+
+		}
 		mesh( new THREE.BoxGeometry( 2.8, 0.12, 0.12 ), metal, tower, [ 0, 5.6, 0 ] );
 		mesh( new THREE.BoxGeometry( 2.5, 1.15, 0.12 ), metal, tower, [ 0, 5.95, 0 ] );
 
@@ -84,7 +80,7 @@ export function buildDriftArena( models ) {
 					new THREE.BoxGeometry( 0.38, 0.38, 0.16 ),
 					lampHousing,
 					tower,
-					[ ( column - 2 ) * 0.47, 5.72 + row * 0.48, -0.12 ]
+					[ ( column - 2 ) * 0.47, 5.72 + row * 0.48, 0.12 ]
 				);
 
 			}
@@ -138,7 +134,8 @@ export function buildDriftArenaPhysics( world, center, scale = 1 ) {
 	} );
 
 	const segments = 48;
-	const halfLength = radius * Math.PI / segments;
+	// Match the visible barrier gaps so neighbouring colliders do not overlap.
+	const halfLength = radius * Math.sin( Math.PI / segments ) * 0.96;
 	for ( let i = 0; i < segments; i ++ ) {
 
 		const angle = i / segments * Math.PI * 2;
