@@ -116,84 +116,13 @@
 			margin: 4px 4px 0;
 		}
 
-		.ar-mode-overlay {
+		body[data-home-ar-host="true"] canvas {
 			position: fixed;
 			inset: 0;
-			z-index: 50;
-			display: grid;
-			place-items: center;
-			padding: 22px;
-			background: rgba(2, 6, 13, 0.72);
-			backdrop-filter: blur(14px);
-			-webkit-backdrop-filter: blur(14px);
 			opacity: 0;
-			visibility: hidden;
-			transition: opacity 0.25s ease, visibility 0.25s ease;
+			pointer-events: none;
 		}
-		.ar-mode-overlay.open { opacity: 1; visibility: visible; }
-		.ar-mode-panel {
-			position: relative;
-			width: min(1040px, 96vw);
-			padding: 30px;
-			border: 1px solid rgba(126, 107, 255, 0.4);
-			border-radius: 26px;
-			background: rgba(8, 13, 24, 0.92);
-			box-shadow: 0 28px 90px rgba(0,0,0,0.65), inset 0 0 38px rgba(87,71,255,0.08);
-			transform: translateY(22px) scale(0.97);
-			transition: transform 0.25s ease;
-		}
-		.ar-mode-overlay.open .ar-mode-panel { transform: translateY(0) scale(1); }
-		.ar-mode-title { margin: 0 0 6px; font: 800 1.65rem 'Orbitron', sans-serif; }
-		.ar-mode-subtitle { margin: 0 0 24px; color: #94a4ba; }
-		.ar-mode-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
-		.ar-mode-card {
-			position: relative;
-			min-height: 250px;
-			padding: 22px;
-			border: 1px solid rgba(255,255,255,0.12);
-			border-radius: 20px;
-			color: #fff;
-			text-decoration: none;
-			overflow: hidden;
-			display: flex;
-			flex-direction: column;
-			justify-content: flex-end;
-			background: linear-gradient(155deg, rgba(26,34,54,0.98), rgba(9,13,22,0.98));
-			transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
-		}
-		.ar-mode-card::before {
-			content: '';
-			position: absolute;
-			inset: 0;
-			background: radial-gradient(circle at 75% 18%, var(--glow), transparent 42%);
-			opacity: 0.8;
-		}
-		.ar-mode-card:hover { transform: translateY(-5px); border-color: var(--accent); box-shadow: 0 18px 38px rgba(0,0,0,0.36); }
-		.ar-mode-card > * { position: relative; z-index: 1; }
-		.ar-mode-icon { font-size: 3.2rem; margin-bottom: auto; filter: drop-shadow(0 0 16px var(--accent)); }
-		.ar-mode-card h3 { margin: 18px 0 7px; font: 700 1.05rem 'Orbitron', sans-serif; }
-		.ar-mode-card p { margin: 0; color: #aebbd0; line-height: 1.45; }
-		.ar-mode-tag { align-self: flex-start; margin-top: 16px; padding: 5px 10px; border-radius: 999px; color: var(--accent); background: rgba(255,255,255,0.07); font-weight: 700; }
-		.ar-mode-close {
-			position: absolute;
-			top: 18px;
-			right: 18px;
-			width: 40px;
-			height: 40px;
-			border: 1px solid rgba(255,255,255,0.15);
-			border-radius: 50%;
-			background: rgba(255,255,255,0.07);
-			color: #fff;
-			font-size: 1.4rem;
-			cursor: pointer;
-		}
-		@media (max-width: 760px) {
-			body { overflow: auto; }
-			.ar-mode-overlay { align-items: start; overflow-y: auto; }
-			.ar-mode-grid { grid-template-columns: 1fr; }
-			.ar-mode-panel { margin: 14px 0; padding: 24px 18px; }
-			.ar-mode-card { min-height: 210px; }
-		}
+		#ar-btn:disabled { opacity: 0.55; cursor: wait; }
 
 		.corner-link {
 			position: absolute;
@@ -212,8 +141,17 @@
 		}
 		.corner-link svg { width: 22px; height: 22px; fill: currentColor; }
 	</style>
+	<script type="importmap">
+	{
+		"imports": {
+			"three": "https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.module.js",
+			"three/addons/": "https://cdn.jsdelivr.net/npm/three@0.185.1/examples/jsm/",
+			"crashcat": "https://esm.sh/crashcat@0.0.3"
+		}
+	}
+	</script>
 </head>
-<body>
+<body data-home-ar-host="true">
 	<a class="corner-link" href="https://github.com/3wasfnjd/Drifting" aria-label="GitHub">
 		<svg viewBox="0 0 24 24"><path d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.56v-2.05c-3.2.7-3.88-1.36-3.88-1.36-.52-1.34-1.28-1.69-1.28-1.69-1.05-.71.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.71 1.26 3.37.96.1-.75.4-1.26.73-1.55-2.55-.29-5.23-1.28-5.23-5.69 0-1.26.45-2.29 1.19-3.1-.12-.29-.51-1.46.11-3.05 0 0 .97-.31 3.18 1.18.92-.26 1.91-.39 2.89-.39.98 0 1.97.13 2.89.39 2.21-1.5 3.18-1.18 3.18-1.18.62 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.1 0 4.42-2.69 5.39-5.25 5.68.41.36.78 1.06.78 2.13v3.16c0 .31.21.67.79.56C20.21 21.39 23.5 17.07 23.5 12 23.5 5.65 18.35.5 12 .5z"/></svg>
 	</a>
@@ -226,37 +164,9 @@
 
 		<div class="menu-nav">
 			<a id="play-btn" class="menu-btn btn-primary" href="game.html">PLAY GAME</a>
-			<button id="ar-btn" class="menu-btn btn-ar" type="button">ENTER AR</button>
+			<button id="ar-btn" class="menu-btn btn-ar" type="button" disabled>LOADING AR…</button>
 			<a class="menu-btn btn-secondary" href="editor.html">TRACK EDITOR</a>
 			<p class="ar-hint">AR requires a compatible headset or phone. After the game loads, confirm entry using the AR button shown by your browser.</p>
-		</div>
-	</div>
-
-	<div id="ar-mode-overlay" class="ar-mode-overlay" aria-hidden="true">
-		<div class="ar-mode-panel" role="dialog" aria-modal="true" aria-labelledby="ar-mode-title" dir="rtl">
-			<button id="ar-mode-close" class="ar-mode-close" type="button" aria-label="إغلاق">×</button>
-			<h2 id="ar-mode-title" class="ar-mode-title">اختر تجربة الواقع المعزز</h2>
-			<p class="ar-mode-subtitle">اختر السطح في الغرفة ثم ثبّت التجربة بزناد وحدة التحكم.</p>
-			<div class="ar-mode-grid">
-				<a class="ar-mode-card" data-ar-mode="free" href="game.html?ar=1&arMode=free" style="--accent:#00e5c3;--glow:rgba(0,229,195,.34)">
-					<span class="ar-mode-icon">⌖</span>
-					<h3>AR الحر في الغرفة</h3>
-					<p>ضع السيارة على أرضية غرفتك وقدها بحرية بلا مضمار أو اصطدام بالأثاث.</p>
-					<span class="ar-mode-tag">قيادة حرة</span>
-				</a>
-				<a class="ar-mode-card" data-ar-mode="track" href="game.html?ar=1&arMode=track" style="--accent:#00b8ff;--glow:rgba(0,184,255,.34)">
-					<span class="ar-mode-icon">▱</span>
-					<h3>مضمار AR</h3>
-					<p>ضع المضمار الحالي فوق أرضية الغرفة وانطلق بالسيارة داخله مع حواجزه الفيزيائية.</p>
-					<span class="ar-mode-tag">سباق المضمار</span>
-				</a>
-				<a class="ar-mode-card" data-ar-mode="arena" href="game.html?ar=1&arMode=arena" style="--accent:#ff6a00;--glow:rgba(255,106,0,.38)">
-					<span class="ar-mode-icon">◉</span>
-					<h3>حلبة الدرفت الدائرية</h3>
-					<p>ساحة تفحيط دائرية بكشافات ملونة، إضاءات ديكور، إطارات وسيارات عرض.</p>
-					<span class="ar-mode-tag">تفحيط ودرفت</span>
-				</a>
-			</div>
 		</div>
 	</div>
 
@@ -265,26 +175,17 @@
 		const mapParam = urlParams.get('map');
 		if (mapParam) {
 			document.getElementById('play-btn').href = 'game.html?map=' + encodeURIComponent(mapParam);
-			document.querySelectorAll('[data-ar-mode]').forEach((card) => {
-				card.href += '&map=' + encodeURIComponent(mapParam);
-			});
 		}
 
 		const arButton = document.getElementById('ar-btn');
-		const arOverlay = document.getElementById('ar-mode-overlay');
-		const arClose = document.getElementById('ar-mode-close');
-		function setARMenu(open) {
-			arOverlay.classList.toggle('open', open);
-			arOverlay.setAttribute('aria-hidden', String(!open));
-		}
-		arButton.addEventListener('click', () => setARMenu(true));
-		arClose.addEventListener('click', () => setARMenu(false));
-		arOverlay.addEventListener('click', (event) => {
-			if (event.target === arOverlay) setARMenu(false);
+		window.addEventListener('drifting-ar-ready', (event) => {
+			arButton.disabled = !event.detail.supported;
+			arButton.textContent = event.detail.supported ? 'ENTER AR' : 'AR NOT SUPPORTED';
 		});
-		document.addEventListener('keydown', (event) => {
-			if (event.key === 'Escape') setARMenu(false);
+		arButton.addEventListener('click', () => {
+			window.startDriftingAR?.();
 		});
 	</script>
+	<script type="module" src="js/main.js"></script>
 </body>
 </html>
