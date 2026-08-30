@@ -63,6 +63,34 @@ let composer = null;
 // handler immediately and just no-op until arManager exists.
 let arManager = null;
 let arEnterBtn = null;
+let arSessionPending = false;
+
+async function enterAR() {
+
+	if ( ! arManager || arSessionPending ) return;
+
+	arSessionPending = true;
+	arEnterBtn.disabled = true;
+	arEnterBtn.textContent = 'STARTING AR…';
+
+	try {
+
+		await arManager.requestSession();
+
+	} catch ( error ) {
+
+		console.error( '[AR] Unable to start immersive-ar session:', error );
+		arEnterBtn.textContent = 'ENTER AR';
+		arEnterBtn.disabled = false;
+		window.alert( 'AR could not start. Use a WebXR AR-compatible browser and allow the requested XR permissions.' );
+
+	} finally {
+
+		arSessionPending = false;
+
+	}
+
+}
 
 function setupDOM() {
 
@@ -80,7 +108,7 @@ function setupDOM() {
 
 		// Fired directly from a real click, so this carries the user-activation
 		// flag WebXR requires to grant a session — unlike a synthetic .click().
-		if ( arManager ) arManager.requestSession();
+		enterAR();
 
 	} );
 	document.body.appendChild( arEnterBtn );
@@ -88,6 +116,11 @@ function setupDOM() {
 	ARManager.isSupported().then( ( supported ) => {
 
 		arEnterBtn.dataset.supported = supported ? 'true' : 'false';
+		if ( ! supported && new URLSearchParams( window.location.search ).get( 'ar' ) === '1' ) {
+
+			window.alert( 'Immersive AR is not supported by this browser or device.' );
+
+		}
 
 	} );
 
@@ -332,6 +365,12 @@ async function init() {
 
 		} );
 		webEnvironmentVisibility.clear();
+		if ( arEnterBtn ) {
+
+			arEnterBtn.textContent = 'ENTER AR';
+			arEnterBtn.disabled = false;
+
+		}
 
 	} );
 
