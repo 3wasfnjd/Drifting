@@ -1,9 +1,9 @@
 import * as THREE from 'three';
 
 const MODES = [
-	{ id: 'free', title: 'قيادة حرة', subtitle: 'السيارة داخل الغرفة', color: '#00d9b5' },
+	{ id: 'free', title: 'قيادة حرة', subtitle: 'العصا اليسرى تغيّر حجم السيارة', color: '#00d9b5' },
 	{ id: 'track', title: 'مضمار AR', subtitle: 'مضمار سباق مصغّر', color: '#00aef3' },
-	{ id: 'arena', title: 'حلبة الدرفت', subtitle: 'ساحة دائرية مضاءة', color: '#ff6a00' },
+	{ id: 'arena', title: 'حلبة الدرفت', subtitle: 'ساحة دائرية للتفحيط', color: '#ff6a00' },
 ];
 
 function cardTexture( mode ) {
