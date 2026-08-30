@@ -340,8 +340,6 @@ async function init() {
 	const sphereBody = createSphereBody( world, spawn ? spawn.position : null, isARExperience ? AR_VEHICLE_RADIUS : 0.5 );
 
 	const vehicle = new Vehicle();
-	// Web mode uses a calmer top speed; AR keeps the faster room-scale pace.
-	vehicle.maxSpeed = isARExperience && ( activeARMode === 'free' || activeARMode === 'arena' ) ? 4.0 : ( isARExperience ? 3.0 : MAX_SPEED );
 	vehicle.rigidBody = sphereBody;
 	vehicle.physicsWorld = world;
 	vehicle.visualOffset = isARExperience ? AR_VEHICLE_RADIUS : 0.5;
@@ -616,7 +614,6 @@ async function init() {
 				if ( selectedMode ) {
 
 					activeARMode = selectedMode;
-					vehicle.maxSpeed = ( activeARMode === 'free' || activeARMode === 'arena' ) ? 4.0 : 3.0;
 					if ( activeARMode === 'free' ) {
 
 						arVehicleScaleFactor = Math.max( arVehicleScaleFactor, 1.5 );
@@ -708,7 +705,7 @@ async function init() {
 				scale: markScale,
 				fadeDuration: fadingARMarks ? 9 : null,
 			} );
-			audio.update( dt, vehicle.linearSpeed / vehicle.maxSpeed, input.z, vehicle.driftIntensity );
+			audio.update( dt, vehicle.linearSpeed / MAX_SPEED, input.z, vehicle.driftIntensity );
 
 			const hasInput = input.touchActive || Math.abs( input.x ) > 0.05 || Math.abs( input.z ) > 0.05;
 			if ( lapTimer ) lapTimer.update( dt, vehicle.spherePos, hasInput );
