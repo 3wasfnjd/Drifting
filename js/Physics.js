@@ -19,15 +19,16 @@ export function buildWallColliders( world, debugGroup, customCells, offset = nul
 	const ox = offset?.x || 0;
 	const oy = offset?.y || 0;
 	const oz = offset?.z || 0;
+	const worldScale = offset?.scale || 1;
 
-	const S = GRID_SCALE;
+	const S = GRID_SCALE * worldScale;
 	const CELL_HALF = CELL_RAW / 2;
 
 	const WALL_HALF_THICK = 0.25;
 	const WALL_X = 4.75;
 	const WALL_HALF_H = 1.5;
 
-	const wallY = ( 0.5 + WALL_HALF_H ) * S - 0.5;
+	const wallY = ( ( 0.5 + WALL_HALF_H ) * GRID_SCALE - 0.5 ) * worldScale;
 	const hThick = WALL_HALF_THICK * S;
 	const hHeight = WALL_HALF_H * S;
 	const hLen = CELL_HALF * S;
@@ -124,10 +125,10 @@ export function buildWallColliders( world, debugGroup, customCells, offset = nul
 
 }
 
-export function createSphereBody( world, spawnPos ) {
+export function createSphereBody( world, spawnPos, radius = 0.5 ) {
 
 	const body = rigidBody.create( world, {
-		shape: sphere.create( { radius: 0.5 } ),
+		shape: sphere.create( { radius } ),
 		motionType: MotionType.DYNAMIC,
 		objectLayer: world._OL_MOVING,
 		position: spawnPos || [ 3.5, 0.5, 5 ],
