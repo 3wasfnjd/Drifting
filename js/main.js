@@ -561,7 +561,13 @@ async function init() {
 	// otherwise sit above the menu and intercept every pointer interaction.
 	if ( ! homeARHost ) controls.setupTouchUI();
 
-	const particles = new SmokeTrails( scene );
+	const particles = new SmokeTrails( scene, isARExperience ? {
+		poolSize: 160,
+		particlesPerEmit: 1,
+		scale: AR_CONTENT_SCALE,
+		maxLife: 1.1,
+		emitInterval: 0.1,
+	} : undefined );
 	const driftMarks = new DriftMarks( scene, mapParam );
 
 	const audio = new GameAudio();
@@ -638,6 +644,20 @@ async function init() {
 		if ( simulationReady ) {
 
 			updateWorld( world, contactListener, dt );
+
+			// Tiny dynamic bodies can oscillate against equally tiny AR floor
+			// colliders. Track and arena surfaces are flat, so keep the sphere's
+			// centre exactly one radius above the placed surface while preserving
+			// horizontal velocity and all wall collisions.
+			if ( isARExperience && activeARMode !== 'free' ) {
+
+				const bodyPosition = sphereBody.position;
+				const bodyVelocity = sphereBody.motionProperties.linearVelocity;
+				rigidBody.setPosition( world, sphereBody, [ bodyPosition[ 0 ], vehicle.spawnPos.y, bodyPosition[ 2 ] ], false );
+				rigidBody.setLinearVelocity( world, sphereBody, [ bodyVelocity[ 0 ], 0, bodyVelocity[ 2 ] ] );
+
+			}
+
 			vehicle.update( dt, input );
 
 		}

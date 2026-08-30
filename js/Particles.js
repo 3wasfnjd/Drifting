@@ -1,22 +1,33 @@
 import * as THREE from 'three';
 
-const POOL_SIZE = 1280;
-const PARTICLES_PER_EMIT = 3;
-const EMIT_JITTER = 0.15;
-const BASE_SIZE = 1;
-const MAX_LIFE = 2.5;
-const INV_MAX_LIFE = 1 / MAX_LIFE;
+const DEFAULT_POOL_SIZE = 1280;
+const DEFAULT_PARTICLES_PER_EMIT = 3;
+const DEFAULT_MAX_LIFE = 2.5;
 
 const _blPos = new THREE.Vector3();
 const _brPos = new THREE.Vector3();
 
 export class SmokeTrails {
 
-	constructor( scene ) {
+	constructor( scene, {
+		poolSize = DEFAULT_POOL_SIZE,
+		particlesPerEmit = DEFAULT_PARTICLES_PER_EMIT,
+		scale = 1,
+		maxLife = DEFAULT_MAX_LIFE,
+		emitInterval = 0,
+	} = {} ) {
 
-		const positions = new Float32Array( POOL_SIZE * 3 );
-		const opacities = new Float32Array( POOL_SIZE );
-		const sizes = new Float32Array( POOL_SIZE );
+		this.poolSize = poolSize;
+		this.particlesPerEmit = particlesPerEmit;
+		this.scale = scale;
+		this.maxLife = maxLife;
+		this.invMaxLife = 1 / maxLife;
+		this.emitInterval = emitInterval;
+		this.emitAccumulator = 0;
+
+		const positions = new Float32Array( poolSize * 3 );
+		const opacities = new Float32Array( poolSize );
+		const sizes = new Float32Array( poolSize );
 
 		const geometry = new THREE.BufferGeometry();
 
@@ -78,7 +89,7 @@ export class SmokeTrails {
 
 		this.particles = [];
 
-		for ( let i = 0; i < POOL_SIZE; i ++ ) {
+		for ( let i = 0; i < this.poolSize; i ++ ) {
 
 			this.particles.push( {
 				life: 0,
@@ -97,13 +108,17 @@ export class SmokeTrails {
 		const shouldEmit = vehicle.driftIntensity > 0.7;
 		let aliveCount = 0;
 
-		if ( shouldEmit ) {
+		if ( shouldEmit ) this.emitAccumulator += dt;
+		const emitNow = shouldEmit && ( this.emitInterval === 0 || this.emitAccumulator >= this.emitInterval );
 
-			const roadY = vehicle.container.position.y + 0.05;
+		if ( emitNow ) {
+
+			this.emitAccumulator = 0;
+			const roadY = vehicle.container.position.y + 0.05 * this.scale;
 			const bl = vehicle.wheelBL ? vehicle.wheelBL.getWorldPosition( _blPos ) : null;
 			const br = vehicle.wheelBR ? vehicle.wheelBR.getWorldPosition( _brPos ) : null;
 
-			for ( let i = 0; i < PARTICLES_PER_EMIT; i ++ ) {
+			for ( let i = 0; i < this.particlesPerEmit; i ++ ) {
 
 				if ( bl ) this.emitAt( bl.x, roadY, bl.z );
 				if ( br ) this.emitAt( br.x, roadY, br.z );
@@ -114,7 +129,7 @@ export class SmokeTrails {
 
 		const damping = 1 - dt;
 
-		for ( let i = 0; i < POOL_SIZE; i ++ ) {
+		for ( let i = 0; i < this.poolSize; i ++ ) {
 
 			const p = this.particles[ i ];
 			if ( p.life <= 0 ) continue;
@@ -129,7 +144,7 @@ export class SmokeTrails {
 
 			}
 
-			const t = 1 - p.life * INV_MAX_LIFE;
+			const t = 1 - p.life * this.invMaxLife;
 
 			p.velocity.multiplyScalar( damping );
 
@@ -158,24 +173,25 @@ export class SmokeTrails {
 	emitAt( x, y, z ) {
 
 		const i = this.emitIndex;
-		this.emitIndex = ( i + 1 ) % POOL_SIZE;
+		this.emitIndex = ( i + 1 ) % this.poolSize;
 
 		const p = this.particles[ i ];
 
 		const posIdx = i * 3;
-		this.positions[ posIdx ] = x + ( Math.random() - 0.5 ) * EMIT_JITTER;
-		this.positions[ posIdx + 1 ] = y + Math.random() * EMIT_JITTER;
-		this.positions[ posIdx + 2 ] = z + ( Math.random() - 0.5 ) * EMIT_JITTER;
+		const jitter = 0.15 * this.scale;
+		this.positions[ posIdx ] = x + ( Math.random() - 0.5 ) * jitter;
+		this.positions[ posIdx + 1 ] = y + Math.random() * jitter;
+		this.positions[ posIdx + 2 ] = z + ( Math.random() - 0.5 ) * jitter;
 
-		p.initialSize = BASE_SIZE * ( 0.5 + Math.random() * 0.5 );
+		p.initialSize = this.scale * ( 0.5 + Math.random() * 0.5 );
 
 		p.velocity.set(
-			( Math.random() - 0.5 ) * 0.2,
-			0.5 + Math.random() * 0.5,
-			( Math.random() - 0.5 ) * 0.2
+			( Math.random() - 0.5 ) * 0.2 * this.scale,
+			( 0.5 + Math.random() * 0.5 ) * this.scale,
+			( Math.random() - 0.5 ) * 0.2 * this.scale
 		);
 
-		p.life = MAX_LIFE;
+		p.life = this.maxLife;
 
 	}
 
