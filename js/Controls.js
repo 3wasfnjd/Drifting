@@ -182,7 +182,7 @@ export class Controls {
 		this.x = x;
 		this.z = z;
 
-		return { x, z, touchActive: this.touchActive };
+		return { x, z, touchActive: this.touchActive, handbrake: !! this.keys[ 'KeyB' ] };
 
 	}
 
