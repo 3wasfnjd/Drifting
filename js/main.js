@@ -423,7 +423,7 @@ async function init() {
 	let currentVehicleMesh = models[ 'vehicle-truck-yellow' ];
 	let arVehicleScaleFactor = 1;
 	let vehicleGroup = vehicle.init( currentVehicleMesh );
-	if ( isARExperience ) vehicleGroup.scale.setScalar( AR_CONTENT_SCALE );
+	if ( isARExperience ) vehicleGroup.scale.setScalar( AR_CONTENT_SCALE * arVehicleScaleFactor );
 	arGroup.add( vehicleGroup );
 
 	// Handle Car Selector UI Cards
@@ -440,7 +440,7 @@ async function init() {
 
 				arGroup.remove( vehicleGroup );
 				vehicleGroup = vehicle.init( models[ modelName ] );
-				if ( isARExperience ) vehicleGroup.scale.setScalar( AR_CONTENT_SCALE );
+				if ( isARExperience ) vehicleGroup.scale.setScalar( AR_CONTENT_SCALE * arVehicleScaleFactor );
 				arGroup.add( vehicleGroup );
 				dirLight.target = vehicleGroup;
 
