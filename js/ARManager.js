@@ -462,6 +462,13 @@ export class ARManager {
 
 	// Driving input, once placed — analogous role to Controls.js, reusing
 	// the exact same {x, z} contract Vehicle.update() already expects.
+	getVehicleScaleInput() {
+
+		const axesL = this.gamepads.left ? this.gamepads.left.axes : [];
+		return - this._axis( axesL, 3 );
+
+	}
+
 	getDriveInput() {
 
 		const axesR = this.gamepads.right ? this.gamepads.right.axes : [];
