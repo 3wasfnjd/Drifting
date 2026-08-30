@@ -62,6 +62,9 @@ class DriftTrail {
 
 		this.positions = positions;
 		this.colors = colors;
+		this.baseAlphas = new Float32Array( MAX_SEGMENTS );
+		this.segmentAges = new Float32Array( MAX_SEGMENTS );
+		this.segmentAges.fill( Infinity );
 		this.geometry = geometry;
 		this.segmentIndex = 0;
 		this.drawCount = 0;
@@ -71,7 +74,7 @@ class DriftTrail {
 
 	}
 
-	track( wheel, groundY, intensity, emit ) {
+	track( wheel, groundY, intensity, emit, width = WIDTH ) {
 
 		if ( ! wheel ) return;
 
@@ -81,7 +84,8 @@ class DriftTrail {
 		if ( emit && this.active ) {
 
 			const alpha = THREE.MathUtils.clamp( ( intensity - INTENSITY_MIN ) * INV_INTENSITY_RANGE, 0, 1 );
-			this._writeSegment( this.prev, _wheelWorld, alpha, true );
+			const minSegmentLength = MIN_SEGMENT_LENGTH * ( width / WIDTH );
+			this._writeSegment( this.prev, _wheelWorld, alpha, true, width, minSegmentLength );
 
 		}
 
@@ -90,15 +94,15 @@ class DriftTrail {
 
 	}
 
-	_writeSegment( prev, curr, alpha, markDirty ) {
+	_writeSegment( prev, curr, alpha, markDirty, width = WIDTH, minSegmentLength = MIN_SEGMENT_LENGTH ) {
 
 		_dir.subVectors( curr, prev );
 		_dir.y = 0;
 		const len = _dir.length();
-		if ( len < MIN_SEGMENT_LENGTH ) return;
+		if ( len < minSegmentLength ) return;
 		_dir.divideScalar( len );
 
-		_side.set( _dir.z, 0, - _dir.x ).multiplyScalar( WIDTH );
+		_side.set( _dir.z, 0, - _dir.x ).multiplyScalar( width );
 
 		_pL.copy( prev ).add( _side );
 		_pR.copy( prev ).sub( _side );
@@ -118,6 +122,8 @@ class DriftTrail {
 
 		const colorOffset = this.segmentIndex * COLOR_FLOATS_PER_SEGMENT;
 		const c = this.colors;
+		this.baseAlphas[ this.segmentIndex ] = alpha;
+		this.segmentAges[ this.segmentIndex ] = 0;
 
 		for ( let i = 0; i < VERTS_PER_SEGMENT; i ++ ) {
 
@@ -147,6 +153,34 @@ class DriftTrail {
 			this.geometry.setDrawRange( 0, this.drawCount );
 
 		}
+
+	}
+
+	tick( dt, fadeDuration ) {
+
+		if ( ! Number.isFinite( fadeDuration ) || fadeDuration <= 0 ) return;
+		const segmentCount = Math.min( this.drawCount / VERTS_PER_SEGMENT, MAX_SEGMENTS );
+		if ( segmentCount === 0 ) return;
+
+		let changed = false;
+		for ( let slot = 0; slot < segmentCount; slot ++ ) {
+
+			const age = this.segmentAges[ slot ];
+			if ( ! Number.isFinite( age ) || age >= fadeDuration ) continue;
+			const nextAge = age + dt;
+			this.segmentAges[ slot ] = nextAge;
+			const alpha = this.baseAlphas[ slot ] * Math.max( 0, 1 - nextAge / fadeDuration );
+			const colorOffset = slot * COLOR_FLOATS_PER_SEGMENT;
+			for ( let vertex = 0; vertex < VERTS_PER_SEGMENT; vertex ++ ) {
+
+				this.colors[ colorOffset + vertex * 4 + 3 ] = alpha;
+
+			}
+			changed = true;
+
+		}
+
+		if ( changed ) this.geometry.attributes.color.needsUpdate = true;
 
 	}
 
@@ -238,7 +272,7 @@ class DriftTrail {
 
 export class DriftMarks {
 
-	constructor( scene, trackId ) {
+	constructor( scene, trackId, { persist = true } = {} ) {
 
 		const material = new THREE.MeshBasicMaterial( {
 			color: 0x111111,
@@ -257,24 +291,31 @@ export class DriftMarks {
 			new DriftTrail( scene, material ),
 		];
 
+		this.persist = persist;
 		this.storageKey = STORAGE_PREFIX + ( trackId || 'default' );
-		this._load();
+		if ( this.persist ) {
 
-		window.addEventListener( 'pagehide', () => this._save() );
+			this._load();
+			window.addEventListener( 'pagehide', () => this._save() );
+
+		}
 
 	}
 
-	update( dt, vehicle ) {
+	update( dt, vehicle, { scale = 1, fadeDuration = null } = {} ) {
+
+		for ( const trail of this.trails ) trail.tick( dt, fadeDuration );
 
 		const emit = vehicle.driftIntensity > 0.5 && Math.abs( vehicle.linearSpeed ) > 0.15;
 
 		if ( ! emit && ! this.trails[ 0 ].active && ! this.trails[ 1 ].active ) return;
 
-		const groundY = vehicle.container.position.y + Y_OFFSET;
+		const groundY = vehicle.container.position.y + Y_OFFSET * scale;
 		const intensity = vehicle.driftIntensity;
 
-		this.trails[ 0 ].track( vehicle.wheelBL, groundY, intensity, emit );
-		this.trails[ 1 ].track( vehicle.wheelBR, groundY, intensity, emit );
+		const width = WIDTH * scale;
+		this.trails[ 0 ].track( vehicle.wheelBL, groundY, intensity, emit, width );
+		this.trails[ 1 ].track( vehicle.wheelBR, groundY, intensity, emit, width );
 
 	}
 

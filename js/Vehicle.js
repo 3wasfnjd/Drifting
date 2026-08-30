@@ -59,6 +59,7 @@ export class Vehicle {
 		this.inputZ = 0;
 
 		this.driftIntensity = 0;
+		this.lateralSlip = 0;
 
 	}
 
@@ -207,7 +208,24 @@ export class Vehicle {
 			this.spherePos.set( pos[ 0 ], pos[ 1 ], pos[ 2 ] );
 
 			const vel = this.rigidBody.motionProperties.linearVelocity;
-			this.sphereVel.set( vel[ 0 ], vel[ 1 ], vel[ 2 ] );
+			const forwardVelocity = vel[ 0 ] * _forward.x + vel[ 2 ] * _forward.z;
+			const lateralVelocity = vel[ 0 ] * _right.x + vel[ 2 ] * _right.z;
+			const speedRatio = THREE.MathUtils.clamp( Math.abs( this.linearSpeed ) / this.maxSpeed, 0, 1 );
+			const driftInput = Math.abs( this.inputX ) > 0.2 && speedRatio > 0.35;
+			const targetSlip = driftInput ? - this.inputX * Math.abs( forwardVelocity ) * ( 0.35 + speedRatio * 0.35 ) : 0;
+			const gripResponse = driftInput ? 2.4 : 6.5;
+			this.lateralSlip = THREE.MathUtils.lerp(
+				this.lateralSlip,
+				targetSlip,
+				1 - Math.exp( - gripResponse * dt )
+			);
+
+			// Apply real lateral velocity so a drift follows a curved sliding path
+			// instead of only rotating the visual model around the sphere.
+			const driftVelocityX = _forward.x * forwardVelocity + _right.x * this.lateralSlip;
+			const driftVelocityZ = _forward.z * forwardVelocity + _right.z * this.lateralSlip;
+			rigidBody.setLinearVelocity( this.physicsWorld, this.rigidBody, [ driftVelocityX, vel[ 1 ], driftVelocityZ ] );
+			this.sphereVel.set( driftVelocityX, vel[ 1 ], driftVelocityZ );
 
 		}
 
@@ -232,6 +250,7 @@ export class Vehicle {
 			this.linearSpeed = 0;
 			this.angularSpeed = 0;
 			this.acceleration = 0;
+			this.lateralSlip = 0;
 			this.container.quaternion.setFromAxisAngle( _up, this.spawnAngle );
 
 		}
@@ -252,8 +271,10 @@ export class Vehicle {
 		this.updateBody( dt );
 		this.updateWheels( dt );
 
-		this.driftIntensity = Math.abs( this.linearSpeed - this.acceleration ) +
-			( this.bodyNode ? Math.abs( this.bodyNode.rotation.z ) * 2 : 0 );
+		const normalizedSlip = Math.abs( this.lateralSlip ) / Math.max( Math.abs( this.linearSpeed ), 0.1 );
+		this.driftIntensity = normalizedSlip * 2.2 +
+			Math.abs( this.linearSpeed - this.acceleration ) * 0.35 +
+			( this.bodyNode ? Math.abs( this.bodyNode.rotation.z ) : 0 );
 
 	}
 
