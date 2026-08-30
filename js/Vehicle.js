@@ -45,6 +45,7 @@ export class Vehicle {
 		this.prevModelPos = new THREE.Vector3( 3.5, 0, 5 );
 
 		this.container = new THREE.Group();
+		this.vehicleModel = null;
 		this.bodyNode = null;
 		this.wheels = [];
 		this.wheelFL = null;
@@ -61,8 +62,19 @@ export class Vehicle {
 
 	init( model ) {
 
-		const vehicleModel = model.clone();
+		// Reusing the same Vehicle instance for the car selector must replace the
+		// previous visual completely. Keeping old clones/wheel references caused
+		// wheels from multiple cars to overlap and appear through the bonnet.
+		if ( this.vehicleModel ) this.container.remove( this.vehicleModel );
+		this.bodyNode = null;
+		this.wheels.length = 0;
+		this.wheelFL = null;
+		this.wheelFR = null;
+		this.wheelBL = null;
+		this.wheelBR = null;
 
+		const vehicleModel = model.clone();
+		this.vehicleModel = vehicleModel;
 		this.container.add( vehicleModel );
 
 		// Find body and wheel nodes
@@ -124,10 +136,18 @@ export class Vehicle {
 			let direction = Math.sign( this.linearSpeed );
 			if ( direction === 0 ) direction = Math.abs( this.inputZ ) > 0.1 ? Math.sign( this.inputZ ) : 1;
 
-			const steeringGrip = THREE.MathUtils.clamp( Math.abs( this.linearSpeed ), 0.2, 1.0 );
-
-			const targetAngular = - this.inputX * steeringGrip * 4 * direction;
-			this.angularSpeed = THREE.MathUtils.lerp( this.angularSpeed, targetAngular, dt * 4 );
+			// Give enough steering authority to initiate a drift, then reduce the
+			// yaw rate as speed rises so the car does not snap or spin instantly.
+			const speedRatio = THREE.MathUtils.clamp( Math.abs( this.linearSpeed ) / MAX_SPEED, 0, 1 );
+			const steeringAuthority = THREE.MathUtils.lerp( 0.35, 1.0, Math.min( speedRatio * 3, 1 ) );
+			const steeringRate = THREE.MathUtils.lerp( 3.2, 1.8, speedRatio );
+			const targetAngular = - this.inputX * steeringAuthority * steeringRate * direction;
+			const steeringResponse = THREE.MathUtils.lerp( 7, 4, speedRatio );
+			this.angularSpeed = THREE.MathUtils.lerp(
+				this.angularSpeed,
+				targetAngular,
+				1 - Math.exp( - steeringResponse * dt )
+			);
 
 			this.container.rotateY( this.angularSpeed * dt );
 
@@ -268,19 +288,20 @@ export class Vehicle {
 
 		for ( const wheel of this.wheels ) {
 
-			wheel.rotation.x += this.acceleration;
+			// Time-based wheel rotation remains stable at 72, 90, or 120 Hz.
+			wheel.rotation.x += this.acceleration * SPEED_SCALE * dt;
 
 		}
 
 		if ( this.wheelFL ) {
 
-			this.wheelFL.rotation.y = lerpAngle( this.wheelFL.rotation.y, -this.inputX / 1.5, dt * 10 );
+			this.wheelFL.rotation.y = lerpAngle( this.wheelFL.rotation.y, - this.inputX * THREE.MathUtils.degToRad( 25 ), dt * 10 );
 
 		}
 
 		if ( this.wheelFR ) {
 
-			this.wheelFR.rotation.y = lerpAngle( this.wheelFR.rotation.y, -this.inputX / 1.5, dt * 10 );
+			this.wheelFR.rotation.y = lerpAngle( this.wheelFR.rotation.y, - this.inputX * THREE.MathUtils.degToRad( 25 ), dt * 10 );
 
 		}
 
