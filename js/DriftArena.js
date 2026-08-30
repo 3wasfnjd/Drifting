@@ -113,30 +113,32 @@ export function buildDriftArena( models ) {
 
 }
 
-export function buildDriftArenaPhysics( world, center ) {
+export function buildDriftArenaPhysics( world, center, scale = 1 ) {
+
+	const radius = DRIFT_ARENA_RADIUS * scale;
 
 	rigidBody.create( world, {
-		shape: box.create( { halfExtents: [ DRIFT_ARENA_RADIUS, 0.01, DRIFT_ARENA_RADIUS ] } ),
+		shape: box.create( { halfExtents: [ radius, 0.01 * scale, radius ] } ),
 		motionType: MotionType.STATIC,
 		objectLayer: world._OL_STATIC,
-		position: [ center.x, center.y - 0.01, center.z ],
+		position: [ center.x, center.y - 0.01 * scale, center.z ],
 		friction: 5.0,
 		restitution: 0,
 	} );
 
 	const segments = 48;
-	const halfLength = DRIFT_ARENA_RADIUS * Math.PI / segments;
+	const halfLength = radius * Math.PI / segments;
 	for ( let i = 0; i < segments; i ++ ) {
 
 		const angle = i / segments * Math.PI * 2;
 		rigidBody.create( world, {
-			shape: box.create( { halfExtents: [ halfLength, 0.55, 0.3 ] } ),
+			shape: box.create( { halfExtents: [ halfLength, 0.55 * scale, 0.3 * scale ] } ),
 			motionType: MotionType.STATIC,
 			objectLayer: world._OL_STATIC,
 			position: [
-				center.x + Math.cos( angle ) * DRIFT_ARENA_RADIUS,
-				center.y + 0.55,
-				center.z + Math.sin( angle ) * DRIFT_ARENA_RADIUS,
+				center.x + Math.cos( angle ) * radius,
+				center.y + 0.55 * scale,
+				center.z + Math.sin( angle ) * radius,
 			],
 			quaternion: [ 0, Math.sin( - angle / 2 ), 0, Math.cos( - angle / 2 ) ],
 			friction: 0.2,
