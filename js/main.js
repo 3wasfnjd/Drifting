@@ -4,7 +4,6 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { LightProbeGrid } from 'three/addons/lighting/LightProbeGrid.js';
 import { createWorldSettings, createWorld, addBroadphaseLayer, addObjectLayer, enableCollision, registerAll, updateWorld, rigidBody, box, MotionType } from 'crashcat';
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { Vehicle, MAX_SPEED } from './Vehicle.js';
 import { Camera } from './Camera.js';
 import { Controls } from './Controls.js';
@@ -446,12 +445,6 @@ async function init() {
 
 	}
 
-	const orbitControls = new OrbitControls( cam.camera, renderer.domElement );
-	orbitControls.enableDamping = true;
-	orbitControls.dampingFactor = 0.05;
-	orbitControls.maxPolarAngle = Math.PI / 2 - 0.05;
-	orbitControls.minDistance = 3;
-	orbitControls.maxDistance = 25;
 
 	const controls = new Controls();
 	controls.setupTouchUI();
@@ -533,7 +526,6 @@ async function init() {
 		const hasInput = input.touchActive || Math.abs( input.x ) > 0.05 || Math.abs( input.z ) > 0.05;
 		lapTimer.update( dt, vehicle.spherePos, hasInput );
 
-		if ( orbitControls ) orbitControls.update();
 
 		if ( composer && ! renderer.xr.isPresenting ) {
 
