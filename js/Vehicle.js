@@ -298,6 +298,9 @@ export class Vehicle {
 		const roadRunner = this.container.getObjectByName( 'road-runner-free-ar' );
 		if ( ! roadRunner || ! roadRunner.visible ) return;
 
+		// Enlarge only the Road Runner visual in free AR so facial and leg details are easier to inspect.
+		roadRunner.scale.setScalar( 1.1 );
+
 		const bodyTail = roadRunner.getObjectByName( 'Object_2' );
 		const legs = roadRunner.getObjectByName( 'Object_3' );
 		const eyes = roadRunner.getObjectByName( 'Object_4' );
