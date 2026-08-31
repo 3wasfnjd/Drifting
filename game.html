@@ -25,6 +25,22 @@
 		.corner-link:hover { background: #fff; }
 		#menu-link { top: 12px; left: 12px; }
 		#editor-link { bottom: 12px; right: 12px; }
+		#character-btn {
+			position: absolute;
+			left: max(12px, env(safe-area-inset-left));
+			bottom: max(12px, env(safe-area-inset-bottom));
+			z-index: 1100;
+			border: 1px solid rgba(255,255,255,.35);
+			border-radius: 999px;
+			padding: 10px 15px;
+			background: rgba(0,0,0,.62);
+			color: #fff;
+			font: 700 12px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+			letter-spacing: .4px;
+			backdrop-filter: blur(12px);
+			-webkit-backdrop-filter: blur(12px);
+			touch-action: manipulation;
+		}
 	</style>
 	<script type="importmap">
 	{
@@ -39,6 +55,7 @@
 <body>
 	<a id="menu-link" class="corner-link" href="index.html">← MAIN MENU</a>
 	<a id="editor-link" class="corner-link" href="editor.html">Create new track</a>
+	<button id="character-btn" type="button">CHARACTER: CAR</button>
 	<script>
 		const map = new URLSearchParams( location.search ).get( 'map' );
 		if ( map ) {
@@ -46,6 +63,18 @@
 			link.href = 'editor.html?map=' + encodeURIComponent(map);
 			link.textContent = 'Edit this track';
 		}
+
+		const characterButton = document.getElementById( 'character-btn' );
+		const refreshCharacterLabel = () => {
+			const runner = localStorage.getItem( 'drifting-character' ) === 'road_runner';
+			characterButton.textContent = runner ? 'CHARACTER: BEEP BEEP' : 'CHARACTER: CAR';
+		};
+		refreshCharacterLabel();
+		characterButton.addEventListener( 'click', () => {
+			const runner = localStorage.getItem( 'drifting-character' ) === 'road_runner';
+			localStorage.setItem( 'drifting-character', runner ? 'vehicle' : 'road_runner' );
+			location.reload();
+		} );
 	</script>
 	<script type="module" src="js/main.js"></script>
 </body>
