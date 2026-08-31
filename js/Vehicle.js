@@ -58,6 +58,11 @@ export class Vehicle {
 
 		this.driftIntensity = 0;
 
+		// Procedural animation state for the Road Runner visual used in free AR.
+		this.roadRunnerTime = 0;
+		this.roadRunnerBlinkTimer = 1.5 + Math.random() * 2.5;
+		this.roadRunnerBlinkTime = 0;
+
 	}
 
 	init( model ) {
@@ -228,6 +233,7 @@ export class Vehicle {
 
 		this.updateBody( dt );
 		this.updateWheels( dt );
+		this.updateRoadRunner( dt );
 
 		this.driftIntensity = Math.abs( this.linearSpeed - this.acceleration ) +
 			( this.bodyNode ? Math.abs( this.bodyNode.rotation.z ) * 2 : 0 );
@@ -282,6 +288,83 @@ export class Vehicle {
 		if ( this.wheelFR ) {
 
 			this.wheelFR.rotation.y = lerpAngle( this.wheelFR.rotation.y, -this.inputX / 1.5, dt * 10 );
+
+		}
+
+	}
+
+	updateRoadRunner( dt ) {
+
+		const roadRunner = this.container.getObjectByName( 'road-runner-free-ar' );
+		if ( ! roadRunner || ! roadRunner.visible ) return;
+
+		const bodyTail = roadRunner.getObjectByName( 'Object_2' );
+		const legs = roadRunner.getObjectByName( 'Object_3' );
+		const eyes = roadRunner.getObjectByName( 'Object_4' );
+		const head = roadRunner.getObjectByName( 'Object_5' );
+
+		for ( const node of [ bodyTail, legs, eyes, head ] ) {
+
+			if ( ! node || node.userData.roadRunnerBase ) continue;
+			node.userData.roadRunnerBase = {
+				position: node.position.clone(),
+				rotation: node.rotation.clone(),
+				scale: node.scale.clone(),
+			};
+
+		}
+
+		const speed = THREE.MathUtils.clamp( Math.abs( this.linearSpeed ) / MAX_SPEED, 0, 1 );
+		const signedSpeed = Math.sign( this.linearSpeed || 1 );
+		const runRate = 4 + speed * 24;
+		this.roadRunnerTime += dt * runRate;
+
+		// Lower body/feet: slow stepping becomes a very fast cartoon wheel-like cycle.
+		if ( legs?.userData.roadRunnerBase ) {
+
+			const base = legs.userData.roadRunnerBase;
+			const stride = Math.sin( this.roadRunnerTime * 2 ) * ( 0.08 + speed * 0.34 );
+			legs.rotation.x = base.rotation.x + stride * signedSpeed;
+			legs.rotation.z = base.rotation.z + Math.sin( this.roadRunnerTime * 4 ) * speed * 0.08;
+			legs.position.y = base.position.y + Math.abs( Math.sin( this.roadRunnerTime * 2 ) ) * speed * 0.025;
+
+		}
+
+		// Body/tail gets a small speed flutter and leans into steering.
+		if ( bodyTail?.userData.roadRunnerBase ) {
+
+			const base = bodyTail.userData.roadRunnerBase;
+			bodyTail.rotation.z = base.rotation.z - this.inputX * speed * 0.10 + Math.sin( this.roadRunnerTime ) * speed * 0.025;
+			bodyTail.rotation.x = base.rotation.x + Math.sin( this.roadRunnerTime * 1.5 ) * speed * 0.018;
+
+		}
+
+		// Head/crest follows acceleration and counter-leans during steering/drift.
+		if ( head?.userData.roadRunnerBase ) {
+
+			const base = head.userData.roadRunnerBase;
+			const accelLean = THREE.MathUtils.clamp( ( this.linearSpeed - this.acceleration ) * 0.18, -0.12, 0.12 );
+			head.rotation.x = base.rotation.x - accelLean + Math.sin( this.roadRunnerTime * 0.65 ) * 0.018;
+			head.rotation.z = base.rotation.z + this.inputX * speed * 0.13;
+			head.position.y = base.position.y + Math.sin( this.roadRunnerTime * 0.7 ) * ( 0.006 + speed * 0.012 );
+
+		}
+
+		// Natural irregular blink. The eyes are a separate mesh, so squash them vertically.
+		if ( eyes?.userData.roadRunnerBase ) {
+
+			const base = eyes.userData.roadRunnerBase;
+			this.roadRunnerBlinkTimer -= dt;
+			if ( this.roadRunnerBlinkTimer <= 0 && this.roadRunnerBlinkTime <= 0 ) {
+				this.roadRunnerBlinkTime = 0.13;
+				this.roadRunnerBlinkTimer = 1.7 + Math.random() * 3.3;
+			}
+
+			if ( this.roadRunnerBlinkTime > 0 ) this.roadRunnerBlinkTime -= dt;
+			const blinkProgress = this.roadRunnerBlinkTime > 0 ? 1 - this.roadRunnerBlinkTime / 0.13 : 0;
+			const blink = this.roadRunnerBlinkTime > 0 ? Math.sin( blinkProgress * Math.PI ) : 0;
+			const targetScaleY = base.scale.y * ( 1 - blink * 0.92 );
+			eyes.scale.y = THREE.MathUtils.lerp( eyes.scale.y, targetScaleY, Math.min( 1, dt * 35 ) );
 
 		}
 
