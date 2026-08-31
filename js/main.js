@@ -181,6 +181,7 @@ window.addEventListener( 'resize', () => {
 const loader = new ColorMapGLTFLoader();
 const modelNames = [
 	'vehicle-truck-yellow', 'vehicle-truck-green', 'vehicle-truck-purple', 'vehicle-truck-red',
+	'road_runner',
 	'track-straight', 'track-corner', 'track-bump', 'track-finish',
 	'decoration-empty', 'decoration-forest', 'decoration-tents',
 ];
@@ -188,7 +189,9 @@ const models = {};
 
 async function loadModels() {
 
-	const namesToLoad = isARExperience ? modelNames.filter( name => ! name.startsWith( 'decoration-' ) ) : modelNames;
+	const namesToLoad = isARExperience
+		? modelNames.filter( name => ! name.startsWith( 'decoration-' ) )
+		: modelNames.filter( name => name !== 'road_runner' );
 	await Promise.all( namesToLoad.map( ( name ) => new Promise( ( resolve, reject ) => {
 
 		loader.load( `models/${ name }.glb`, ( gltf ) => {
@@ -378,7 +381,31 @@ async function init() {
 	let currentVehicleMesh = models[ 'vehicle-truck-yellow' ];
 	let arVehicleScaleFactor = 1;
 	let vehicleGroup = vehicle.init( currentVehicleMesh );
+	let roadRunnerVisual = null;
+	if ( isARExperience && models[ 'road_runner' ] ) {
+		roadRunnerVisual = models[ 'road_runner' ].clone();
+		roadRunnerVisual.name = 'road-runner-free-ar';
+		roadRunnerVisual.scale.setScalar( 0.55 );
+		roadRunnerVisual.position.set( 0, 0, 0 );
+		roadRunnerVisual.visible = false;
+		roadRunnerVisual.traverse( child => {
+			if ( child.isMesh ) {
+				child.castShadow = true;
+				child.receiveShadow = true;
+			}
+		} );
+		vehicleGroup.add( roadRunnerVisual );
+	}
+	const syncARVehicleVisual = () => {
+		if ( ! isARExperience || ! roadRunnerVisual ) return;
+		const useRoadRunner = activeARMode === 'free';
+		vehicleGroup.children.forEach( child => {
+			if ( child !== roadRunnerVisual ) child.visible = ! useRoadRunner;
+		} );
+		roadRunnerVisual.visible = useRoadRunner;
+	};
 	if ( isARExperience ) vehicleGroup.scale.setScalar( AR_CONTENT_SCALE * arVehicleScaleFactor );
+	syncARVehicleVisual();
 	arGroup.add( vehicleGroup );
 
 	document.querySelectorAll( '.car-card' ).forEach( ( card ) => {
@@ -390,6 +417,7 @@ async function init() {
 				arGroup.remove( vehicleGroup );
 				vehicleGroup = vehicle.init( models[ modelName ] );
 				if ( isARExperience ) vehicleGroup.scale.setScalar( AR_CONTENT_SCALE * arVehicleScaleFactor );
+				syncARVehicleVisual();
 				arGroup.add( vehicleGroup );
 				dirLight.target = vehicleGroup;
 			}
@@ -523,6 +551,7 @@ async function init() {
 				const selectedMode = modeMenu.update( arManager.controllers, arManager.gamepads );
 				if ( selectedMode ) {
 					activeARMode = selectedMode;
+					syncARVehicleVisual();
 					if ( activeARMode === 'free' ) {
 						arVehicleScaleFactor = Math.max( arVehicleScaleFactor, 1.5 );
 						vehicleGroup.scale.setScalar( AR_CONTENT_SCALE * arVehicleScaleFactor );
