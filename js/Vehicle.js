@@ -16,10 +16,10 @@ const _rrBaseHeadQuat = new THREE.Quaternion();
 const _rrEyeQuat = new THREE.Quaternion();
 const _rrEyeOffset = new THREE.Vector3();
 
-// Logical speed is now expressed in metres/second at normal scale.
-// 18 m/s ~= 65 km/h: fast enough for sustained drifting without the old
-// frame-by-frame angular-velocity accumulation that made speed unstable.
-export const MAX_SPEED = 18.0;
+// Logical speed is expressed in metres/second at normal scale.
+// 30 m/s ~= 108 km/h: a more realistic drift/hajwala top speed while
+// keeping the stable rolling-speed model used by Web and scaled AR modes.
+export const MAX_SPEED = 30.0;
 const ACCELERATION_RATE = 6.5;
 const BRAKE_RATE = 13.0;
 const COAST_DECELERATION = 1.1;
@@ -212,9 +212,6 @@ export class Vehicle {
 			const driveResponse = this.handbrake ? 1.8 : THREE.MathUtils.lerp( 8.0, 4.5, driftLoad );
 			const blend = 1 - Math.exp( - driveResponse * dt );
 
-			// Rolling constraint: v = r*w. Because AR scales both the world
-			// speed and sphere radius together, the required angular speed is
-			// scale-independent and stays consistent between Web and AR.
 			const targetSpin = this.linearSpeed / BASE_SPHERE_RADIUS;
 			const targetX = _right.x * targetSpin;
 			const targetZ = _right.z * targetSpin;
