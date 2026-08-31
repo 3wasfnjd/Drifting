@@ -130,8 +130,8 @@ export class GameAudio {
 		const now = ctx.currentTime;
 		const gain = ctx.createGain();
 		gain.gain.setValueAtTime( 0.0001, now );
-		gain.gain.exponentialRampToValueAtTime( 0.22, now + 0.008 );
-		gain.gain.exponentialRampToValueAtTime( 0.0001, now + 0.24 );
+		gain.gain.exponentialRampToValueAtTime( 0.24, now + 0.004 );
+		gain.gain.exponentialRampToValueAtTime( 0.0001, now + 0.135 );
 		gain.connect( this.listener.getInput() );
 		const beep = ( start, frequency ) => {
 			const osc = ctx.createOscillator();
@@ -139,10 +139,10 @@ export class GameAudio {
 			osc.frequency.setValueAtTime( frequency, now + start );
 			osc.connect( gain );
 			osc.start( now + start );
-			osc.stop( now + start + 0.075 );
+			osc.stop( now + start + 0.042 );
 		};
-		beep( 0, 1180 );
-		beep( 0.095, 1420 );
+		beep( 0, 1260 );
+		beep( 0.054, 1510 );
 	}
 
 	async initEngine() {
@@ -198,8 +198,6 @@ export class GameAudio {
 		const absSpeed = THREE.MathUtils.clamp( Math.abs( speed ), 0, 1 );
 		const load = THREE.MathUtils.clamp( Math.max( 0, throttle ), 0, 1 );
 		const now = this.listener.context.currentTime;
-
-		// Road Runner free-AR audio: silence car engine/skid and beep only on each launch from rest.
 		if ( this.roadRunnerMode ) {
 			if ( this.engineGain ) this.engineGain.gain.setTargetAtTime( 0, now, 0.025 );
 			if ( this.skidSound?.buffer ) this.skidSound.gain.gain.setTargetAtTime( 0, now, 0.025 );
@@ -209,7 +207,6 @@ export class GameAudio {
 			else if ( moving ) this.roadRunnerWasMoving = true;
 			return;
 		}
-
 		const gearWindow = 1 / NUM_GEARS;
 		const gearStart = this.gear * gearWindow;
 		const inGear = THREE.MathUtils.clamp( ( absSpeed - gearStart ) / gearWindow, 0, 1 );
