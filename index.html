@@ -76,6 +76,7 @@
 			transition: all 0.25s ease;
 			text-decoration: none;
 			display: block;
+			width: 100%;
 		}
 
 		.btn-primary {
@@ -85,6 +86,16 @@
 		}
 		.btn-primary:hover {
 			box-shadow: 0 0 30px rgba(0, 255, 200, 0.8);
+			transform: translateY(-2px);
+		}
+
+		.btn-character {
+			background: linear-gradient(135deg, #ff9d2f 0%, #ff5f45 100%);
+			color: #fff;
+			box-shadow: 0 0 20px rgba(255, 120, 60, 0.28);
+		}
+		.btn-character:hover {
+			box-shadow: 0 0 30px rgba(255, 120, 60, 0.55);
 			transform: translateY(-2px);
 		}
 
@@ -164,9 +175,10 @@
 
 		<div class="menu-nav">
 			<a id="play-btn" class="menu-btn btn-primary" href="game.html">PLAY GAME</a>
+			<button id="character-btn" class="menu-btn btn-character" type="button">CHARACTER: CAR</button>
 			<button id="ar-btn" class="menu-btn btn-ar" type="button" disabled>LOADING AR…</button>
 			<a class="menu-btn btn-secondary" href="editor.html">TRACK EDITOR</a>
-			<p class="ar-hint">AR requires a compatible headset or phone. After the game loads, confirm entry using the AR button shown by your browser.</p>
+			<p class="ar-hint">Choose CAR or BEEP BEEP first. The selection is used in web, track, arena and AR modes.</p>
 		</div>
 	</div>
 
@@ -176,6 +188,18 @@
 		if (mapParam) {
 			document.getElementById('play-btn').href = 'game.html?map=' + encodeURIComponent(mapParam);
 		}
+
+		const characterButton = document.getElementById('character-btn');
+		const refreshCharacterLabel = () => {
+			const runner = localStorage.getItem('drifting-character') === 'road_runner';
+			characterButton.textContent = runner ? 'CHARACTER: BEEP BEEP' : 'CHARACTER: CAR';
+		};
+		refreshCharacterLabel();
+		characterButton.addEventListener('click', () => {
+			const runner = localStorage.getItem('drifting-character') === 'road_runner';
+			localStorage.setItem('drifting-character', runner ? 'vehicle' : 'road_runner');
+			refreshCharacterLabel();
+		});
 
 		const arButton = document.getElementById('ar-btn');
 		window.addEventListener('drifting-ar-ready', (event) => {
