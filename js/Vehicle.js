@@ -12,7 +12,6 @@ const _mat4 = new THREE.Matrix4();
 const _quat = new THREE.Quaternion();
 const _up = new THREE.Vector3( 0, 1, 0 );
 
-// Original Drifting vehicle values from the first uploaded Vehicle.js.
 const LINEAR_DAMP = 0.1;
 export const MAX_SPEED = 1.5;
 const BASE_SPHERE_RADIUS = 0.5;
@@ -27,8 +26,6 @@ function lerpAngle( a, b, t ) {
 	return a + diff * t;
 }
 
-// Keep the model-safe pivots added later so different GLB cars do not lose
-// baked rotations when body/wheel animation is applied.
 function createPivot( node ) {
 	const parent = node.parent;
 	const pivot = new THREE.Group();
@@ -95,7 +92,6 @@ export class Vehicle {
 			this.bodyNode.getWorldScale( _tmpScale );
 			vehicleModel.getWorldScale( _tmpScale2 );
 			const extraLocalScale = _tmpScale.y / Math.max( _tmpScale2.y, 0.0001 );
-
 			let clearance = null;
 			if ( wheelChildren.length ) {
 				vehicleModel.updateMatrixWorld( true );
@@ -129,7 +125,6 @@ export class Vehicle {
 		this.inputZ = THREE.MathUtils.clamp( controlsInput.z || 0, -1, 1 );
 		this.handbrake = !! controlsInput.handbrake;
 
-		// ORIGINAL touch/mobile behavior.
 		if ( controlsInput.touchActive && ( this.inputX !== 0 || this.inputZ !== 0 ) ) {
 			const targetAngle = Math.atan2( this.inputX, this.inputZ );
 			_quat.setFromAxisAngle( _up, targetAngle );
@@ -139,15 +134,18 @@ export class Vehicle {
 			this.inputX = THREE.MathUtils.clamp( -cross * 2, -1, 1 );
 			this.linearSpeed = THREE.MathUtils.lerp( this.linearSpeed, MAX_SPEED, dt * 1.5 );
 		} else {
-			// ORIGINAL steering response and throttle curves.
 			let direction = Math.sign( this.linearSpeed );
 			if ( direction === 0 ) direction = Math.abs( this.inputZ ) > 0.1 ? Math.sign( this.inputZ ) : 1;
 
-			const steeringGrip = THREE.MathUtils.clamp( Math.abs( this.linearSpeed ), 0.2, 1.0 );
-			const effectiveGrip = this.handbrake ? 1.0 : steeringGrip;
-			const turnMultiplier = this.handbrake ? 6.5 : 4.0;
+			const speedAbs = Math.abs( this.linearSpeed );
+			const steeringGrip = THREE.MathUtils.clamp( speedAbs, 0.2, 1.0 );
+			const speedFactor = THREE.MathUtils.smoothstep( speedAbs, 0.18, 1.05 );
+			const hardTurn = THREE.MathUtils.smoothstep( Math.abs( this.inputX ), 0.35, 0.92 );
+			const turnMultiplier = this.handbrake ? 4.8 : THREE.MathUtils.lerp( 3.15, 3.65, speedFactor );
+			const effectiveGrip = this.handbrake ? THREE.MathUtils.lerp( .62, 1.0, speedFactor ) : steeringGrip;
 			const targetAngular = -this.inputX * effectiveGrip * turnMultiplier * direction;
-			this.angularSpeed = THREE.MathUtils.lerp( this.angularSpeed, targetAngular, dt * 4 );
+			const steerResponse = this.handbrake ? 5.0 : THREE.MathUtils.lerp( 3.1, 4.0, hardTurn );
+			this.angularSpeed = THREE.MathUtils.lerp( this.angularSpeed, targetAngular, 1 - Math.exp( -steerResponse * dt ) );
 			this.container.rotateY( this.angularSpeed * dt );
 
 			const targetSpeed = this.inputZ;
@@ -175,7 +173,7 @@ export class Vehicle {
 		}
 
 		this.linearSpeed *= Math.max( 0, 1 - LINEAR_DAMP * dt );
-		if ( this.handbrake ) this.linearSpeed *= Math.max( 0, 1 - 1.2 * dt );
+		if ( this.handbrake ) this.linearSpeed *= Math.max( 0, 1 - 0.55 * dt );
 
 		if ( this.rigidBody ) {
 			_forward.set( 0, 0, 1 ).applyQuaternion( this.container.quaternion );
@@ -185,9 +183,6 @@ export class Vehicle {
 			_right.y = 0;
 			_right.normalize();
 
-			// ORIGINAL drive model: add rolling angular velocity every frame.
-			// Radius ratio only compensates miniature AR so the original feel is
-			// preserved at different collider scales.
 			const angvel = this.rigidBody.motionProperties.angularVelocity;
 			const radiusRatio = BASE_SPHERE_RADIUS / Math.max( this.sphereRadius, 0.001 );
 			const drive = this.linearSpeed * 100 * dt * radiusRatio;
@@ -201,9 +196,32 @@ export class Vehicle {
 			this.spherePos.set( pos[0], pos[1], pos[2] );
 			const vel = this.rigidBody.motionProperties.linearVelocity;
 			this.sphereVel.set( vel[0], vel[1], vel[2] );
+
+			// Real drift layer: keep the body's momentum while the nose rotates.
+			// Lateral tyre grip is strong in a mild turn, progressively releases in
+			// a hard turn, and releases much more with the handbrake. This produces
+			// an actual sideways trajectory instead of rotating the model in place.
+			const scaleRatio = Math.max( this.sphereRadius / BASE_SPHERE_RADIUS, 0.001 );
+			const horizontalSpeed = Math.hypot( this.sphereVel.x, this.sphereVel.z ) / scaleRatio;
+			const speedFactor = THREE.MathUtils.smoothstep( horizontalSpeed, 0.18, 1.15 );
+			const hardTurn = THREE.MathUtils.smoothstep( Math.abs( this.inputX ), 0.30, 0.90 );
+			const forwardVel = this.sphereVel.dot( _forward );
+			let lateralVel = this.sphereVel.dot( _right );
+			const normalGrip = THREE.MathUtils.lerp( 9.0, 2.4, hardTurn * speedFactor );
+			const lateralGrip = this.handbrake ? THREE.MathUtils.lerp( 1.15, 0.38, speedFactor ) : normalGrip;
+			lateralVel *= Math.exp( -lateralGrip * dt );
+
+			// A small rear-end breakaway under a hard steer makes initiation feel
+			// like a car losing rear grip rather than a perfectly circular turn.
+			const breakaway = ( this.handbrake ? 0.72 : 0.24 ) * hardTurn * speedFactor * Math.abs( forwardVel );
+			lateralVel += -Math.sign( this.inputX || 0 ) * breakaway * dt;
+
+			const correctedX = _forward.x * forwardVel + _right.x * lateralVel;
+			const correctedZ = _forward.z * forwardVel + _right.z * lateralVel;
+			rigidBody.setLinearVelocity( this.physicsWorld, this.rigidBody, [ correctedX, vel[1], correctedZ ] );
+			this.sphereVel.set( correctedX, vel[1], correctedZ );
 		}
 
-		// ORIGINAL body-acceleration proxy used by body lean and drift effects.
 		this.acceleration = THREE.MathUtils.lerp(
 			this.acceleration,
 			this.linearSpeed + ( 0.25 * this.linearSpeed * Math.abs( this.linearSpeed ) ),
@@ -241,11 +259,18 @@ export class Vehicle {
 		this.updateWheels( dt );
 		this.updateRoadRunner( dt );
 
-		// Original drift signal, with handbrake contribution retained only so
-		// the current smoke/marks system still reacts when the lever is held.
-		this.driftIntensity = Math.abs( this.linearSpeed - this.acceleration ) +
-			( this.bodyNode ? Math.abs( this.bodyNode.rotation.z ) * 2 : 0 ) +
-			( this.handbrake ? 0.7 : 0 );
+		_forward.set( 0, 0, 1 ).applyQuaternion( this.container.quaternion );
+		_forward.y = 0;
+		_forward.normalize();
+		_right.set( 1, 0, 0 ).applyQuaternion( this.container.quaternion );
+		_right.y = 0;
+		_right.normalize();
+		const scaleRatio = Math.max( this.sphereRadius / BASE_SPHERE_RADIUS, 0.001 );
+		const lateralSlip = Math.abs( this.sphereVel.dot( _right ) ) / scaleRatio;
+		this.driftIntensity = lateralSlip * 1.45 +
+			Math.abs( this.linearSpeed - this.acceleration ) +
+			( this.bodyNode ? Math.abs( this.bodyNode.rotation.z ) * 1.35 : 0 ) +
+			( this.handbrake ? 0.55 : 0 );
 	}
 
 	alignWithY( quaternion, newY ) {
@@ -281,8 +306,6 @@ export class Vehicle {
 		if ( this.wheelFR ) this.wheelFR.rotation.y = lerpAngle( this.wheelFR.rotation.y, -this.inputX / 1.5, dt * 10 );
 	}
 
-	// Keep Road Runner's procedural motion, but drive it from the restored
-	// original speed values. This does not alter vehicle physics.
 	updateRoadRunner( dt ) {
 		const r = this.container.getObjectByName( 'road-runner-free-ar' );
 		if ( ! r || ! r.visible ) return;
