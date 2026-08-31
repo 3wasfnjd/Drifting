@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { rigidBody, box, MotionType } from 'crashcat';
 
-export const DRIFT_ARENA_RADIUS = 18;
+export const DRIFT_ARENA_RADIUS = 40;
 
 function mesh( geometry, material, parent, position = null ) {
 
