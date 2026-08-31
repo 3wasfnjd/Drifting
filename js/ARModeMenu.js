@@ -18,7 +18,6 @@ function roundedRect( ctx, x, y, width, height, radius ) {
 }
 
 function cardTexture( mode ) {
-
 	const canvas = document.createElement( 'canvas' );
 	canvas.width = 720;
 	canvas.height = 420;
@@ -31,28 +30,22 @@ function cardTexture( mode ) {
 	roundedRect( ctx, 14, 14, canvas.width - 28, canvas.height - 28, 42 );
 	ctx.fillStyle = gradient;
 	ctx.fill();
-
 	ctx.lineWidth = 6;
 	ctx.strokeStyle = mode.color;
 	ctx.globalAlpha = 0.88;
 	ctx.stroke();
 	ctx.globalAlpha = 1;
-
 	ctx.textAlign = 'center';
 	ctx.direction = 'rtl';
-
 	ctx.fillStyle = mode.color;
 	ctx.font = '700 28px sans-serif';
 	ctx.fillText( mode.badge, canvas.width / 2, 78 );
-
 	ctx.fillStyle = '#ffffff';
 	ctx.font = '700 58px sans-serif';
 	ctx.fillText( mode.title, canvas.width / 2, 190 );
-
 	ctx.fillStyle = '#aebbd0';
 	ctx.font = '34px sans-serif';
 	ctx.fillText( mode.subtitle, canvas.width / 2, 258 );
-
 	ctx.fillStyle = 'rgba(255,255,255,0.08)';
 	roundedRect( ctx, 175, 310, 370, 62, 31 );
 	ctx.fill();
@@ -65,13 +58,10 @@ function cardTexture( mode ) {
 	texture.anisotropy = 4;
 	texture.needsUpdate = true;
 	return texture;
-
 }
 
 export class ARModeMenu {
-
 	constructor( scene ) {
-
 		this.group = new THREE.Group();
 		this.group.name = 'ar-mode-menu';
 		this.group.visible = false;
@@ -84,80 +74,55 @@ export class ARModeMenu {
 		this.rayDirection = new THREE.Vector3();
 		this.controllerQuaternion = new THREE.Quaternion();
 
-		const panel = new THREE.Mesh(
-			new THREE.PlaneGeometry( 2.15, 0.78 ),
-			new THREE.MeshBasicMaterial( {
-				color: 0x050812,
-				transparent: true,
-				opacity: 0.58,
-				side: THREE.DoubleSide,
-				depthWrite: false,
-			} )
-		);
-		panel.position.z = -0.025;
-		this.group.add( panel );
-
+		// Cards float directly in AR; no dark backing panel.
 		MODES.forEach( ( mode, index ) => {
-
 			const material = new THREE.MeshBasicMaterial( {
-				map: cardTexture( mode ),
-				transparent: true,
-				side: THREE.DoubleSide,
-				depthWrite: false,
+				map: cardTexture( mode ), transparent: true, side: THREE.DoubleSide, depthWrite: false,
 			} );
 			const card = new THREE.Mesh( new THREE.PlaneGeometry( 0.62, 0.36 ), material );
-			card.position.set( ( index - 1 ) * 0.70, -0.015, 0 );
+			card.position.set( ( index - 1 ) * 0.70, 0, 0 );
 			card.userData.arMode = mode.id;
 			this.cards.push( card );
 			this.group.add( card );
-
 		} );
-
 		scene.add( this.group );
-
 	}
 
 	show() {
-
 		this.group.visible = true;
 		this.placed = false;
 		this.previousPressed.left = false;
 		this.previousPressed.right = false;
 		this.armed = false;
-
 	}
 
-	hide() {
-
-		this.group.visible = false;
-
-	}
+	hide() { this.group.visible = false; }
 
 	placeInFrontOf( camera ) {
-
 		if ( this.placed ) return;
 		camera.updateMatrixWorld( true );
 		const position = new THREE.Vector3().setFromMatrixPosition( camera.matrixWorld );
 		const quaternion = camera.getWorldQuaternion( new THREE.Quaternion() );
 		const forward = new THREE.Vector3( 0, 0, -1 ).applyQuaternion( quaternion );
-		const down = new THREE.Vector3( 0, -0.08, 0 );
+		forward.y = 0;
+		if ( forward.lengthSq() < 0.0001 ) forward.set( 0, 0, -1 );
+		forward.normalize();
 
-		// Comfortable XR viewing distance: smaller cards, farther from the face.
-		this.group.position.copy( position ).addScaledVector( forward, 2.15 ).add( down );
-		this.group.quaternion.copy( quaternion );
+		// Place once in world space. The menu stays fixed when the headset moves.
+		// Slightly below eye height gives a natural forward/down gaze.
+		this.group.position.copy( position ).addScaledVector( forward, 2.15 );
+		this.group.position.y -= 0.18;
+		this.group.lookAt( position.x, this.group.position.y, position.z );
+		this.group.rotateY( Math.PI );
 		this.placed = true;
-
 	}
 
 	update( controllers, gamepads ) {
-
 		if ( ! this.group.visible ) return null;
-
 		let hovered = null;
 		let anyPressed = false;
 		let selectedMode = null;
 		for ( const hand of [ 'left', 'right' ] ) {
-
 			const controller = controllers[ hand ];
 			if ( ! controller ) continue;
 			controller.updateMatrixWorld( true );
@@ -167,26 +132,17 @@ export class ARModeMenu {
 			this.raycaster.set( this.rayOrigin, this.rayDirection );
 			const hit = this.raycaster.intersectObjects( this.cards, false )[ 0 ];
 			if ( hit ) hovered = hit.object;
-
 			const pressed = Boolean( gamepads[ hand ]?.buttons?.[ 0 ]?.pressed );
 			anyPressed ||= pressed;
 			const edge = pressed && ! this.previousPressed[ hand ];
 			this.previousPressed[ hand ] = pressed;
 			if ( this.armed && edge && hit ) selectedMode = hit.object.userData.arMode;
-
 		}
-
 		for ( const card of this.cards ) {
-
 			const target = card === hovered ? 1.06 : 1;
 			card.scale.lerp( new THREE.Vector3( target, target, target ), 0.18 );
-
 		}
-
 		if ( ! anyPressed ) this.armed = true;
-
 		return selectedMode;
-
 	}
-
 }
