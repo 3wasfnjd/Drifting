@@ -16,11 +16,18 @@ const _rrBaseHeadQuat = new THREE.Quaternion();
 const _rrEyeQuat = new THREE.Quaternion();
 const _rrEyeOffset = new THREE.Vector3();
 
-const LINEAR_DAMP = 0.1;
-export const MAX_SPEED = 1.5;
-const REVERSE_SPEED_SCALE = 0.6;
+// Logical speed is now expressed in metres/second at normal scale.
+// 18 m/s ~= 65 km/h: fast enough for sustained drifting without the old
+// frame-by-frame angular-velocity accumulation that made speed unstable.
+export const MAX_SPEED = 18.0;
+const ACCELERATION_RATE = 6.5;
+const BRAKE_RATE = 13.0;
+const COAST_DECELERATION = 1.1;
+const HANDBRAKE_DECELERATION = 7.0;
+const REVERSE_SPEED_SCALE = 0.35;
 const BODY_SUSPENSION_SINK = 0.1;
 const ROAD_RUNNER_MAX_SPEED = MAX_SPEED;
+const BASE_SPHERE_RADIUS = 0.5;
 
 function createPivot( node ) {
 	const parent = node.parent;
@@ -39,6 +46,12 @@ function lerpAngle( a, b, t ) {
 	while ( diff > Math.PI ) diff -= Math.PI * 2;
 	while ( diff < - Math.PI ) diff += Math.PI * 2;
 	return a + diff * t;
+}
+
+function moveTowards( current, target, maxDelta ) {
+	if ( current < target ) return Math.min( current + maxDelta, target );
+	if ( current > target ) return Math.max( current - maxDelta, target );
+	return current;
 }
 
 export class Vehicle {
@@ -130,8 +143,8 @@ export class Vehicle {
 	}
 
 	update( dt, controlsInput ) {
-		this.inputX = controlsInput.x;
-		this.inputZ = controlsInput.z;
+		this.inputX = THREE.MathUtils.clamp( controlsInput.x || 0, -1, 1 );
+		this.inputZ = THREE.MathUtils.clamp( controlsInput.z || 0, -1, 1 );
 		this.handbrake = !! controlsInput.handbrake;
 
 		if ( controlsInput.touchActive && ( this.inputX !== 0 || this.inputZ !== 0 ) ) {
@@ -140,34 +153,40 @@ export class Vehicle {
 			this.container.quaternion.slerp( _quat, 1 - Math.exp( - 3 * dt ) );
 			_forward.set( 0, 0, 1 ).applyQuaternion( this.container.quaternion );
 			const cross = _forward.x * this.inputZ - _forward.z * this.inputX;
-			this.inputX = THREE.MathUtils.clamp( - cross * 2, - 1, 1 );
-			this.linearSpeed = THREE.MathUtils.lerp( this.linearSpeed, MAX_SPEED, dt * 1.5 );
+			this.inputX = THREE.MathUtils.clamp( - cross * 2, -1, 1 );
+			this.linearSpeed = moveTowards( this.linearSpeed, MAX_SPEED, ACCELERATION_RATE * dt );
 		} else {
 			let direction = Math.sign( this.linearSpeed );
 			if ( direction === 0 ) direction = Math.abs( this.inputZ ) > 0.1 ? Math.sign( this.inputZ ) : 1;
 
-			const steeringGrip = THREE.MathUtils.clamp( Math.abs( this.linearSpeed ), 0.2, 1.0 );
+			const speedRatio = THREE.MathUtils.clamp( Math.abs( this.linearSpeed ) / MAX_SPEED, 0, 1 );
+			const steeringGrip = THREE.MathUtils.lerp( 0.22, 1.0, Math.sqrt( speedRatio ) );
 			const effectiveGrip = this.handbrake ? 1.0 : steeringGrip;
-			const turnMultiplier = this.handbrake ? 6.5 : 4;
+			const turnMultiplier = this.handbrake ? 6.5 : 4.0;
 			const targetAngular = - this.inputX * effectiveGrip * turnMultiplier * direction;
-			this.angularSpeed = THREE.MathUtils.lerp( this.angularSpeed, targetAngular, dt * 4 );
+			const steerResponse = this.handbrake ? 5.0 : 4.0;
+			this.angularSpeed = THREE.MathUtils.lerp( this.angularSpeed, targetAngular, 1 - Math.exp( - steerResponse * dt ) );
 			this.container.rotateY( this.angularSpeed * dt );
 
-			const targetSpeed = this.inputZ;
-			if ( this.linearSpeed < 0.15 && targetSpeed > 0.6 && this._launchArmed ) {
+			const targetSpeed = this.inputZ >= 0
+				? this.inputZ * MAX_SPEED
+				: this.inputZ * MAX_SPEED * REVERSE_SPEED_SCALE;
+
+			if ( this.linearSpeed < 1.0 && targetSpeed > MAX_SPEED * 0.65 && this._launchArmed ) {
 				this.justLaunched = true;
 				this._launchArmed = false;
 			} else {
 				this.justLaunched = false;
 			}
-			if ( Math.abs( this.linearSpeed ) > 0.5 || targetSpeed < 0.3 ) this._launchArmed = true;
+			if ( Math.abs( this.linearSpeed ) > MAX_SPEED * 0.3 || targetSpeed < MAX_SPEED * 0.2 ) this._launchArmed = true;
 
-			if ( targetSpeed < 0 && this.linearSpeed > 0.01 ) {
-				this.linearSpeed = THREE.MathUtils.lerp( this.linearSpeed, 0.0, dt * 8 );
-			} else if ( targetSpeed < 0 ) {
-				this.linearSpeed = THREE.MathUtils.lerp( this.linearSpeed, targetSpeed * MAX_SPEED * REVERSE_SPEED_SCALE, dt * 2 );
+			if ( this.inputZ < -0.05 && this.linearSpeed > 0.1 ) {
+				this.linearSpeed = moveTowards( this.linearSpeed, 0, BRAKE_RATE * dt );
+			} else if ( Math.abs( this.inputZ ) <= 0.05 ) {
+				this.linearSpeed = moveTowards( this.linearSpeed, 0, COAST_DECELERATION * dt );
 			} else {
-				this.linearSpeed = THREE.MathUtils.lerp( this.linearSpeed, targetSpeed * MAX_SPEED, dt * 1.5 );
+				const rate = Math.abs( targetSpeed ) < Math.abs( this.linearSpeed ) ? BRAKE_RATE : ACCELERATION_RATE;
+				this.linearSpeed = moveTowards( this.linearSpeed, targetSpeed, rate * dt );
 			}
 		}
 
@@ -177,8 +196,7 @@ export class Vehicle {
 			this.container.quaternion.slerp( targetQuat, 0.2 );
 		}
 
-		this.linearSpeed *= Math.max( 0, 1 - LINEAR_DAMP * dt );
-		if ( this.handbrake ) this.linearSpeed *= Math.max( 0, 1 - 1.2 * dt );
+		if ( this.handbrake ) this.linearSpeed = moveTowards( this.linearSpeed, 0, HANDBRAKE_DECELERATION * dt );
 
 		if ( this.rigidBody ) {
 			_forward.set( 0, 0, 1 ).applyQuaternion( this.container.quaternion );
@@ -189,12 +207,21 @@ export class Vehicle {
 			_right.normalize();
 
 			const angvel = this.rigidBody.motionProperties.angularVelocity;
-			const radiusRatio = 0.5 / Math.max( this.sphereRadius, 0.001 );
-			const drive = this.linearSpeed * 100 * dt * radiusRatio;
+			const speedRatio = THREE.MathUtils.clamp( Math.abs( this.linearSpeed ) / MAX_SPEED, 0, 1 );
+			const driftLoad = Math.abs( this.inputX ) * speedRatio;
+			const driveResponse = this.handbrake ? 1.8 : THREE.MathUtils.lerp( 8.0, 4.5, driftLoad );
+			const blend = 1 - Math.exp( - driveResponse * dt );
+
+			// Rolling constraint: v = r*w. Because AR scales both the world
+			// speed and sphere radius together, the required angular speed is
+			// scale-independent and stays consistent between Web and AR.
+			const targetSpin = this.linearSpeed / BASE_SPHERE_RADIUS;
+			const targetX = _right.x * targetSpin;
+			const targetZ = _right.z * targetSpin;
 			rigidBody.setAngularVelocity( this.physicsWorld, this.rigidBody, [
-				angvel[ 0 ] + _right.x * drive,
+				THREE.MathUtils.lerp( angvel[ 0 ], targetX, blend ),
 				angvel[ 1 ],
-				angvel[ 2 ] + _right.z * drive
+				THREE.MathUtils.lerp( angvel[ 2 ], targetZ, blend )
 			] );
 
 			const pos = this.rigidBody.position;
@@ -205,11 +232,11 @@ export class Vehicle {
 
 		this.acceleration = THREE.MathUtils.lerp(
 			this.acceleration,
-			this.linearSpeed + ( 0.25 * this.linearSpeed * Math.abs( this.linearSpeed ) ),
-			dt
+			this.linearSpeed,
+			1 - Math.exp( - 5 * dt )
 		);
 
-		const respawnDropDistance = Math.max( 2.0 * ( this.sphereRadius / 0.5 ), 0.05 );
+		const respawnDropDistance = Math.max( 2.0 * ( this.sphereRadius / BASE_SPHERE_RADIUS ), 0.05 );
 		const respawnYLimit = this.spawnPos.y - respawnDropDistance;
 		if ( this.spherePos.y < respawnYLimit ) {
 			if ( this.rigidBody ) {
@@ -241,10 +268,18 @@ export class Vehicle {
 		this.updateWheels( dt );
 		this.updateRoadRunner( dt );
 
-		this.driftIntensity = Math.abs( this.linearSpeed - this.acceleration ) +
-			( this.bodyNode ? Math.abs( this.bodyNode.rotation.z ) * 2 : 0 ) +
-			( this.handbrake ? 0.7 : 0 ) +
-			Math.abs( this.inputX ) * Math.abs( this.linearSpeed ) * 0.6;
+		_forward.set( 0, 0, 1 ).applyQuaternion( this.container.quaternion );
+		_forward.y = 0;
+		_forward.normalize();
+		_right.set( 1, 0, 0 ).applyQuaternion( this.container.quaternion );
+		_right.y = 0;
+		_right.normalize();
+		const scaleRatio = Math.max( this.sphereRadius / BASE_SPHERE_RADIUS, 0.001 );
+		const logicalLateralSlip = Math.abs( this.sphereVel.dot( _right ) ) / scaleRatio;
+		const normalizedSpeed = THREE.MathUtils.clamp( Math.abs( this.linearSpeed ) / MAX_SPEED, 0, 1 );
+		this.driftIntensity = logicalLateralSlip / 4.0 +
+			( this.handbrake ? 0.75 : 0 ) +
+			Math.abs( this.inputX ) * normalizedSpeed * 0.9;
 	}
 
 	alignWithY( quaternion, newY ) {
@@ -257,27 +292,23 @@ export class Vehicle {
 
 	updateBody( dt ) {
 		if ( ! this.bodyNode ) return;
-		this.bodyNode.rotation.x = lerpAngle(
-			this.bodyNode.rotation.x,
-			- ( this.linearSpeed - this.acceleration ) / 6,
-			dt * 10
-		);
-		this.bodyNode.rotation.z = lerpAngle(
-			this.bodyNode.rotation.z,
-			- ( this.inputX / 5 ) * this.linearSpeed,
-			dt * 5
-		);
+		const speedRatio = THREE.MathUtils.clamp( Math.abs( this.linearSpeed ) / MAX_SPEED, 0, 1 );
+		const pitch = THREE.MathUtils.clamp( - ( this.linearSpeed - this.acceleration ) / MAX_SPEED * 0.22, -0.12, 0.12 );
+		const roll = - this.inputX * speedRatio * ( this.handbrake ? 0.24 : 0.18 );
+		this.bodyNode.rotation.x = lerpAngle( this.bodyNode.rotation.x, pitch, 1 - Math.exp( - 10 * dt ) );
+		this.bodyNode.rotation.z = lerpAngle( this.bodyNode.rotation.z, roll, 1 - Math.exp( - 5 * dt ) );
 		this.bodyNode.position.y = THREE.MathUtils.lerp(
 			this.bodyNode.position.y,
 			this._bodyRestY - this._bodySuspensionSinkLocal,
-			dt * 5
+			1 - Math.exp( - 5 * dt )
 		);
 	}
 
 	updateWheels( dt ) {
-		for ( const wheel of this.wheels ) wheel.rotation.x += this.acceleration;
-		if ( this.wheelFL ) this.wheelFL.rotation.y = lerpAngle( this.wheelFL.rotation.y, - this.inputX / 1.5, dt * 10 );
-		if ( this.wheelFR ) this.wheelFR.rotation.y = lerpAngle( this.wheelFR.rotation.y, - this.inputX / 1.5, dt * 10 );
+		const wheelSpin = ( this.linearSpeed / 0.35 ) * dt;
+		for ( const wheel of this.wheels ) wheel.rotation.x += wheelSpin;
+		if ( this.wheelFL ) this.wheelFL.rotation.y = lerpAngle( this.wheelFL.rotation.y, - this.inputX / 1.5, 1 - Math.exp( - 10 * dt ) );
+		if ( this.wheelFR ) this.wheelFR.rotation.y = lerpAngle( this.wheelFR.rotation.y, - this.inputX / 1.5, 1 - Math.exp( - 10 * dt ) );
 	}
 
 	updateRoadRunner( dt ) {
@@ -294,7 +325,7 @@ export class Vehicle {
 		this.roadRunnerRunBlend = THREE.MathUtils.lerp( this.roadRunnerRunBlend, legTarget, 1 - Math.exp( - dt * 6.5 ) );
 		const run = this.roadRunnerRunBlend, fast = THREE.MathUtils.clamp( ringTarget * run, 0, 1 );
 		this.roadRunnerTime += dt * ( 4 + speed * 36 );
-		const ad = THREE.MathUtils.clamp( this.linearSpeed - this.acceleration, -.7, .7 ), rubber = ad * .11, bounce = Math.sin( this.roadRunnerTime * .55 ) * .018 * speed;
+		const ad = THREE.MathUtils.clamp( ( this.linearSpeed - this.acceleration ) / MAX_SPEED, -.7, .7 ), rubber = ad * .11, bounce = Math.sin( this.roadRunnerTime * .55 ) * .018 * speed;
 		r.scale.x = 2.2 * ( 1 - Math.abs( rubber ) * .35 );
 		r.scale.y = 2.2 * ( 1 - rubber * .32 + bounce );
 		r.scale.z = 2.2 * ( 1 + rubber * .75 );
