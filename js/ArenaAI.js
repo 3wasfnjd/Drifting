@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { rigidBody } from 'crashcat';
 import { Vehicle } from './Vehicle.js';
 import { createSphereBody } from './Physics.js';
+import { SmokeTrails } from './Particles.js';
+import { DriftMarks } from './DriftMarks.js';
 
 function normalizeAngle(x){return((((x+Math.PI)%(Math.PI*2)+Math.PI*2)%(Math.PI*2))-Math.PI)}
 const _forward=new THREE.Vector3();
@@ -20,10 +22,10 @@ export function createArenaAI({world,parent,models,center=new THREE.Vector3(),sc
   const a=i/count*Math.PI*2,r=10*scale;const pos=[center.x+Math.cos(a)*r,center.y+radius,center.z+Math.sin(a)*r];
   const body=createSphereBody(world,pos,radius),vehicle=new Vehicle();vehicle.rigidBody=body;vehicle.physicsWorld=world;vehicle.visualOffset=radius;vehicle.sphereRadius=radius;vehicle.spawnPos.set(...pos);vehicle.spherePos.set(...pos);vehicle.prevModelPos.set(pos[0],center.y,pos[2]);
   const group=vehicle.init(models[keys[i%keys.length]]);if(scale!==1)group.scale.setScalar(scale);parent.add(group);
-  // Measure from the model origin to the lowest visible point once. In AR this
-  // avoids mixing world-space Box3 coordinates with the arena's scaled model.
   group.position.set(0,0,0);group.updateMatrixWorld(true);const visualBottomOffset=measureVisualBottomOffset(group);
-  drivers.push({vehicle,center:center.clone(),scale,aiState:'CRUISING',stateTimer:1.5+Math.random()*2.5,target:center.clone(),sampleTimer:0,stuckStrikes:0,groundY:center.y,visualBottomOffset});
+  const smoke=new SmokeTrails(parent,{poolSize:scale<1?96:320,particlesPerEmit:scale<1?1:2,scale,maxLife:scale<1?1.15:1.8,emitInterval:scale<1?.08:.035});
+  const marks=new DriftMarks(parent,null,{persist:false});
+  drivers.push({vehicle,center:center.clone(),scale,aiState:'CRUISING',stateTimer:1.5+Math.random()*2.5,target:center.clone(),sampleTimer:0,stuckStrikes:0,groundY:center.y,visualBottomOffset,smoke,marks});
  }
  return drivers;
 }
@@ -36,8 +38,8 @@ export function updateArenaAI(drivers,dt,arenaRadius){
   if(Math.hypot(dx,dz)>limit){d.aiState='AVOIDANCE';d.target.set(d.center.x,0,d.center.z)}else if(d.aiState!=='AVOIDANCE'&&d.stateTimer<=0){const roll=Math.random();d.aiState=roll<.45?'DRIFTING':roll<.76?'CRUISING':'DONUT';d.stateTimer=d.aiState==='DONUT'?2.2+Math.random()*2.2:3+Math.random()*4;const a=Math.random()*Math.PI*2,r=wander*Math.sqrt(Math.random());d.target.set(d.center.x+Math.cos(a)*r,0,d.center.z+Math.sin(a)*r)}
   const input={x:0,z:1,touchActive:false,handbrake:false};if(d.aiState==='DONUT'){input.x=1;input.handbrake=Math.sin(performance.now()*.012+drivers.indexOf(d))>.15}else{const tx=d.aiState==='AVOIDANCE'?d.center.x:d.target.x,tz=d.aiState==='AVOIDANCE'?d.center.z:d.target.z,targetAngle=Math.atan2(tx-v.spherePos.x,tz-v.spherePos.z),diff=normalizeAngle(targetAngle-headingY(v)),gain=d.aiState==='DRIFTING'?4:d.aiState==='AVOIDANCE'?3:2;input.x=THREE.MathUtils.clamp(-diff*gain,-1,1);input.z=1;input.handbrake=d.aiState==='DRIFTING'&&Math.abs(diff)>.38;if(d.aiState==='AVOIDANCE'&&Math.hypot(dx,dz)<wander*.7){d.aiState='CRUISING';d.stateTimer=2}}
   v.update(dt,input);
-  // Keep the rendered tyres/body bottom exactly on the arena plane. The
-  // physics sphere remains at groundY + radius, so driving physics are unchanged.
   v.container.position.y=d.groundY+d.visualBottomOffset;
+  d.smoke.update(dt,v);
+  d.marks.update(dt,v,{scale:d.scale,fadeDuration:9});
  }
 }
