@@ -3,12 +3,13 @@ import * as THREE from 'three';
 const _desired = new THREE.Vector3();
 const _delta = new THREE.Vector3();
 const _lookPoint = new THREE.Vector3();
+const _introFollowPos = new THREE.Vector3();
 
 export class Camera {
 
 	constructor() {
 
-		this.camera = new THREE.PerspectiveCamera( 40, window.innerWidth / window.innerHeight, 0.1, 60 );
+		this.camera = new THREE.PerspectiveCamera( 40, window.innerWidth / window.innerHeight, 0.1, 180 );
 
 		// Matches Godot View: 45° azimuth, 35° elevation, distance 16
 		this.offset = new THREE.Vector3( 9.27, 9.18, 9.27 );
@@ -17,8 +18,6 @@ export class Camera {
 		this.camera.lookAt( 0, 0, 0 );
 
 		// Camera-aligned ground basis (XZ plane), derived from offset.
-		// camRightXZ: screen-right projected to ground.
-		// camForwardXZ: screen-up (away from camera) projected to ground.
 		this.camRightXZ = new THREE.Vector3( this.offset.z, 0, - this.offset.x ).normalize();
 		this.camForwardXZ = new THREE.Vector3( - this.offset.x, 0, - this.offset.z ).normalize();
 
@@ -29,6 +28,15 @@ export class Camera {
 
 		this.smoothedDesired = new THREE.Vector3();
 		this.initialized = false;
+
+		// Web arena cinematic entrance: show the complete 40-radius arena first,
+		// then smoothly move into the normal chase camera.
+		const params = new URLSearchParams( window.location.search );
+		this.arenaIntro = params.get( 'mode' ) === 'arena' && params.get( 'ar' ) !== '1';
+		this.arenaIntroTime = 0;
+		this.arenaIntroHold = 1.35;
+		this.arenaIntroBlend = 1.65;
+		this.arenaOverviewPosition = new THREE.Vector3( 0, 92, 58 );
 
 		const segments = 64;
 		const points = [];
@@ -60,8 +68,6 @@ export class Camera {
 		const radius = this.deadzoneRadius;
 		const radiusSq = radius * radius;
 
-		// Lead = velocity projected onto camera-aligned ground basis, scaled, clamped to the deadzone disk.
-		// Becomes the camera's offset from the car: car settles at the trailing edge of the circle.
 		let leadX = velocity.dot( this.camRightXZ ) * this.leadFactor;
 		let leadY = velocity.dot( this.camForwardXZ ) * this.leadFactor;
 		const leadLenSq = leadX * leadX + leadY * leadY;
@@ -81,7 +87,6 @@ export class Camera {
 		this.smoothedDesired.lerp( _desired, alpha );
 		this.initialized = true;
 
-		// Hard-clamp: car must not escape the deadzone, even if the lerp lags at high speed.
 		_delta.subVectors( target, this.smoothedDesired );
 		const offsetX = _delta.dot( this.camRightXZ );
 		const offsetY = _delta.dot( this.camForwardXZ );
@@ -96,11 +101,42 @@ export class Camera {
 
 		}
 
-		// Shift the entire view (camera + lookAt) so smoothedDesired sits higher on screen.
 		_lookPoint.copy( this.smoothedDesired ).addScaledVector( this.camForwardXZ, - this.screenShiftUp );
+		_introFollowPos.copy( _lookPoint ).add( this.offset );
 
-		this.camera.position.copy( _lookPoint ).add( this.offset );
-		this.camera.lookAt( _lookPoint );
+		if ( this.arenaIntro ) {
+
+			this.arenaIntroTime += dt;
+			const blendStart = this.arenaIntroHold;
+			const blendEnd = blendStart + this.arenaIntroBlend;
+
+			if ( this.arenaIntroTime < blendStart ) {
+
+				this.camera.position.copy( this.arenaOverviewPosition );
+				this.camera.lookAt( 0, 0, 0 );
+
+			} else if ( this.arenaIntroTime < blendEnd ) {
+
+				let t = ( this.arenaIntroTime - blendStart ) / this.arenaIntroBlend;
+				t = t * t * ( 3 - 2 * t );
+				this.camera.position.lerpVectors( this.arenaOverviewPosition, _introFollowPos, t );
+				const introLook = _desired.set( 0, 0, 0 ).lerp( _lookPoint, t );
+				this.camera.lookAt( introLook );
+
+			} else {
+
+				this.arenaIntro = false;
+				this.camera.position.copy( _introFollowPos );
+				this.camera.lookAt( _lookPoint );
+
+			}
+
+		} else {
+
+			this.camera.position.copy( _introFollowPos );
+			this.camera.lookAt( _lookPoint );
+
+		}
 
 		this.debug.position.copy( this.smoothedDesired );
 		this.debug.position.y += 0.05;
