@@ -15,7 +15,6 @@ const _up = new THREE.Vector3( 0, 1, 0 );
 const LINEAR_DAMP = 0.1;
 export const MAX_SPEED = 1.5;
 const BASE_SPHERE_RADIUS = 0.5;
-const REVERSE_SPEED_SCALE = 1 / 3;
 const BODY_SUSPENSION_SINK = 0.1;
 const ROAD_RUNNER_MAX_SPEED = MAX_SPEED;
 
@@ -128,24 +127,20 @@ export class Vehicle {
 		if ( controlsInput.touchActive && ( this.inputX !== 0 || this.inputZ !== 0 ) ) {
 			const targetAngle = Math.atan2( this.inputX, this.inputZ );
 			_quat.setFromAxisAngle( _up, targetAngle );
-			this.container.quaternion.slerp( _quat, 1 - Math.exp( -3 * dt ) );
+			this.container.quaternion.slerp( _quat, 1 - Math.exp( - 3 * dt ) );
+
 			_forward.set( 0, 0, 1 ).applyQuaternion( this.container.quaternion );
 			const cross = _forward.x * this.inputZ - _forward.z * this.inputX;
-			this.inputX = THREE.MathUtils.clamp( -cross * 2, -1, 1 );
+			this.inputX = THREE.MathUtils.clamp( - cross * 2, - 1, 1 );
 			this.linearSpeed = THREE.MathUtils.lerp( this.linearSpeed, MAX_SPEED, dt * 1.5 );
 		} else {
 			let direction = Math.sign( this.linearSpeed );
 			if ( direction === 0 ) direction = Math.abs( this.inputZ ) > 0.1 ? Math.sign( this.inputZ ) : 1;
 
-			const speedAbs = Math.abs( this.linearSpeed );
-			const steeringGrip = THREE.MathUtils.clamp( speedAbs, 0.2, 1.0 );
-			const speedFactor = THREE.MathUtils.smoothstep( speedAbs, 0.18, 1.05 );
-			const hardTurn = THREE.MathUtils.smoothstep( Math.abs( this.inputX ), 0.35, 0.92 );
-			const turnMultiplier = this.handbrake ? 4.8 : THREE.MathUtils.lerp( 3.15, 3.65, speedFactor );
-			const effectiveGrip = this.handbrake ? THREE.MathUtils.lerp( .62, 1.0, speedFactor ) : steeringGrip;
-			const targetAngular = -this.inputX * effectiveGrip * turnMultiplier * direction;
-			const steerResponse = this.handbrake ? 5.0 : THREE.MathUtils.lerp( 3.1, 4.0, hardTurn );
-			this.angularSpeed = THREE.MathUtils.lerp( this.angularSpeed, targetAngular, 1 - Math.exp( -steerResponse * dt ) );
+			// Exact steering response from the original Vehicle.js.
+			const steeringGrip = THREE.MathUtils.clamp( Math.abs( this.linearSpeed ), 0.2, 1.0 );
+			const targetAngular = - this.inputX * steeringGrip * 4 * direction;
+			this.angularSpeed = THREE.MathUtils.lerp( this.angularSpeed, targetAngular, dt * 4 );
 			this.container.rotateY( this.angularSpeed * dt );
 
 			const targetSpeed = this.inputZ;
@@ -157,10 +152,11 @@ export class Vehicle {
 			}
 			if ( Math.abs( this.linearSpeed ) > 0.5 || targetSpeed < 0.3 ) this._launchArmed = true;
 
+			// Exact throttle/reverse curve from the original Vehicle.js.
 			if ( targetSpeed < 0 && this.linearSpeed > 0.01 ) {
 				this.linearSpeed = THREE.MathUtils.lerp( this.linearSpeed, 0.0, dt * 8 );
 			} else if ( targetSpeed < 0 ) {
-				this.linearSpeed = THREE.MathUtils.lerp( this.linearSpeed, targetSpeed * MAX_SPEED * REVERSE_SPEED_SCALE, dt * 2 );
+				this.linearSpeed = THREE.MathUtils.lerp( this.linearSpeed, targetSpeed / 2, dt * 2 );
 			} else {
 				this.linearSpeed = THREE.MathUtils.lerp( this.linearSpeed, targetSpeed * MAX_SPEED, dt * 1.5 );
 			}
@@ -172,8 +168,8 @@ export class Vehicle {
 			this.container.quaternion.slerp( targetQuat, 0.2 );
 		}
 
+		// Exact damping from the original. No custom lateral-slip correction.
 		this.linearSpeed *= Math.max( 0, 1 - LINEAR_DAMP * dt );
-		if ( this.handbrake ) this.linearSpeed *= Math.max( 0, 1 - 0.55 * dt );
 
 		if ( this.rigidBody ) {
 			_forward.set( 0, 0, 1 ).applyQuaternion( this.container.quaternion );
@@ -187,31 +183,15 @@ export class Vehicle {
 			const radiusRatio = BASE_SPHERE_RADIUS / Math.max( this.sphereRadius, 0.001 );
 			const drive = this.linearSpeed * 100 * dt * radiusRatio;
 			rigidBody.setAngularVelocity( this.physicsWorld, this.rigidBody, [
-				angvel[0] + _right.x * drive,
-				angvel[1],
-				angvel[2] + _right.z * drive
+				angvel[ 0 ] + _right.x * drive,
+				angvel[ 1 ],
+				angvel[ 2 ] + _right.z * drive
 			] );
 
 			const pos = this.rigidBody.position;
-			this.spherePos.set( pos[0], pos[1], pos[2] );
+			this.spherePos.set( pos[ 0 ], pos[ 1 ], pos[ 2 ] );
 			const vel = this.rigidBody.motionProperties.linearVelocity;
-			this.sphereVel.set( vel[0], vel[1], vel[2] );
-
-			const scaleRatio = Math.max( this.sphereRadius / BASE_SPHERE_RADIUS, 0.001 );
-			const horizontalSpeed = Math.hypot( this.sphereVel.x, this.sphereVel.z ) / scaleRatio;
-			const speedFactor = THREE.MathUtils.smoothstep( horizontalSpeed, 0.18, 1.15 );
-			const hardTurn = THREE.MathUtils.smoothstep( Math.abs( this.inputX ), 0.30, 0.90 );
-			const forwardVel = this.sphereVel.dot( _forward );
-			let lateralVel = this.sphereVel.dot( _right );
-			const normalGrip = THREE.MathUtils.lerp( 9.0, 2.4, hardTurn * speedFactor );
-			const lateralGrip = this.handbrake ? THREE.MathUtils.lerp( 1.15, 0.38, speedFactor ) : normalGrip;
-			lateralVel *= Math.exp( -lateralGrip * dt );
-			const breakaway = ( this.handbrake ? 0.72 : 0.24 ) * hardTurn * speedFactor * Math.abs( forwardVel );
-			lateralVel += -Math.sign( this.inputX || 0 ) * breakaway * dt;
-			const correctedX = _forward.x * forwardVel + _right.x * lateralVel;
-			const correctedZ = _forward.z * forwardVel + _right.z * lateralVel;
-			rigidBody.setLinearVelocity( this.physicsWorld, this.rigidBody, [ correctedX, vel[1], correctedZ ] );
-			this.sphereVel.set( correctedX, vel[1], correctedZ );
+			this.sphereVel.set( vel[ 0 ], vel[ 1 ], vel[ 2 ] );
 		}
 
 		this.acceleration = THREE.MathUtils.lerp(
@@ -225,11 +205,11 @@ export class Vehicle {
 		if ( this.spherePos.y < respawnYLimit ) {
 			if ( this.rigidBody ) {
 				rigidBody.setPosition( this.physicsWorld, this.rigidBody, this.spawnPos.toArray(), false );
-				rigidBody.setLinearVelocity( this.physicsWorld, this.rigidBody, [0,0,0] );
-				rigidBody.setAngularVelocity( this.physicsWorld, this.rigidBody, [0,0,0] );
+				rigidBody.setLinearVelocity( this.physicsWorld, this.rigidBody, [ 0, 0, 0 ] );
+				rigidBody.setAngularVelocity( this.physicsWorld, this.rigidBody, [ 0, 0, 0 ] );
 			}
 			this.spherePos.copy( this.spawnPos );
-			this.sphereVel.set( 0,0,0 );
+			this.sphereVel.set( 0, 0, 0 );
 			this.linearSpeed = 0;
 			this.angularSpeed = 0;
 			this.acceleration = 0;
@@ -251,18 +231,9 @@ export class Vehicle {
 		this.updateWheels( dt );
 		this.updateRoadRunner( dt );
 
-		_forward.set( 0, 0, 1 ).applyQuaternion( this.container.quaternion );
-		_forward.y = 0;
-		_forward.normalize();
-		_right.set( 1, 0, 0 ).applyQuaternion( this.container.quaternion );
-		_right.y = 0;
-		_right.normalize();
-		const scaleRatio = Math.max( this.sphereRadius / BASE_SPHERE_RADIUS, 0.001 );
-		const lateralSlip = Math.abs( this.sphereVel.dot( _right ) ) / scaleRatio;
-		this.driftIntensity = lateralSlip * 1.45 +
-			Math.abs( this.linearSpeed - this.acceleration ) +
-			( this.bodyNode ? Math.abs( this.bodyNode.rotation.z ) * 1.35 : 0 ) +
-			( this.handbrake ? 0.55 : 0 );
+		// Exact drift signal from the original Vehicle.js.
+		this.driftIntensity = Math.abs( this.linearSpeed - this.acceleration ) +
+			( this.bodyNode ? Math.abs( this.bodyNode.rotation.z ) * 2 : 0 );
 	}
 
 	alignWithY( quaternion, newY ) {
@@ -294,8 +265,8 @@ export class Vehicle {
 
 	updateWheels( dt ) {
 		for ( const wheel of this.wheels ) wheel.rotation.x += this.acceleration;
-		if ( this.wheelFL ) this.wheelFL.rotation.y = lerpAngle( this.wheelFL.rotation.y, -this.inputX / 1.5, dt * 10 );
-		if ( this.wheelFR ) this.wheelFR.rotation.y = lerpAngle( this.wheelFR.rotation.y, -this.inputX / 1.5, dt * 10 );
+		if ( this.wheelFL ) this.wheelFL.rotation.y = lerpAngle( this.wheelFL.rotation.y, - this.inputX / 1.5, dt * 10 );
+		if ( this.wheelFR ) this.wheelFR.rotation.y = lerpAngle( this.wheelFR.rotation.y, - this.inputX / 1.5, dt * 10 );
 	}
 
 	updateRoadRunner( dt ) {
@@ -307,7 +278,7 @@ export class Vehicle {
 		const speed = THREE.MathUtils.clamp( Math.abs( this.linearSpeed ) / ROAD_RUNNER_MAX_SPEED, 0, 1 );
 		const legTarget = THREE.MathUtils.smoothstep( speed, 0.06, 0.36 );
 		const speedTarget = THREE.MathUtils.smoothstep( speed, 0.42, 0.78 );
-		this.roadRunnerRunBlend = THREE.MathUtils.lerp( this.roadRunnerRunBlend, legTarget, 1 - Math.exp( -dt * 7 ) );
+		this.roadRunnerRunBlend = THREE.MathUtils.lerp( this.roadRunnerRunBlend, legTarget, 1 - Math.exp( - dt * 7 ) );
 		this.roadRunnerTime += dt * ( 5 + speed * 34 );
 		const run = this.roadRunnerRunBlend;
 		const fast = THREE.MathUtils.clamp( speedTarget * run, 0, 1 );
