@@ -15,7 +15,8 @@ const _rrEyeQuat = new THREE.Quaternion();
 const _rrEyeOffset = new THREE.Vector3();
 
 const LINEAR_DAMP = 0.1;
-export const MAX_SPEED = 1.5;
+export const MAX_SPEED = 2.4;
+const VEHICLE_ACCELERATION = 2.6;
 const ROAD_RUNNER_MAX_SPEED = 5.0;
 const ROAD_RUNNER_ACCELERATION = 10.0;
 
@@ -85,7 +86,7 @@ export class Vehicle {
 		const roadRunner = this.container.getObjectByName( 'road-runner-free-ar' );
 		const roadRunnerActive = !! ( roadRunner && roadRunner.visible );
 		const maxSpeed = roadRunnerActive ? ROAD_RUNNER_MAX_SPEED : MAX_SPEED;
-		const accelerationRate = roadRunnerActive ? ROAD_RUNNER_ACCELERATION : 1.5;
+		const accelerationRate = roadRunnerActive ? ROAD_RUNNER_ACCELERATION : VEHICLE_ACCELERATION;
 
 		if ( controlsInput.touchActive && ( this.inputX !== 0 || this.inputZ !== 0 ) ) {
 			const targetAngle = Math.atan2( this.inputX, this.inputZ );
@@ -108,7 +109,7 @@ export class Vehicle {
 			} else if ( targetSpeed < 0 ) {
 				this.linearSpeed = THREE.MathUtils.lerp( this.linearSpeed, targetSpeed * maxSpeed * 0.35, dt * 3 );
 			} else {
-				const rate = roadRunnerActive && targetSpeed > 0.1 ? accelerationRate : 1.5;
+				const rate = targetSpeed > 0.1 ? accelerationRate : VEHICLE_ACCELERATION;
 				this.linearSpeed = THREE.MathUtils.lerp( this.linearSpeed, targetSpeed * maxSpeed, Math.min( 1, dt * rate ) );
 			}
 		}
