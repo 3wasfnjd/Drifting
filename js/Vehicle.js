@@ -16,10 +16,10 @@ const _rrBaseHeadQuat = new THREE.Quaternion();
 const _rrEyeQuat = new THREE.Quaternion();
 const _rrEyeOffset = new THREE.Vector3();
 
-// Logical speed is expressed in metres/second at normal scale.
-// 30 m/s ~= 108 km/h: a more realistic drift/hajwala top speed while
-// keeping the stable rolling-speed model used by Web and scaled AR modes.
-export const MAX_SPEED = 30.0;
+// 45 m/s ~= 162 km/h at normal scale. In miniature AR the physical world
+// speed is still scaled by the sphere radius, so it stays controllable while
+// feeling fast relative to the miniature track/arena.
+export const MAX_SPEED = 45.0;
 const ACCELERATION_RATE = 6.5;
 const BRAKE_RATE = 13.0;
 const COAST_DECELERATION = 1.1;
@@ -146,6 +146,7 @@ export class Vehicle {
 		this.inputX = THREE.MathUtils.clamp( controlsInput.x || 0, -1, 1 );
 		this.inputZ = THREE.MathUtils.clamp( controlsInput.z || 0, -1, 1 );
 		this.handbrake = !! controlsInput.handbrake;
+		const miniatureAR = this.sphereRadius < BASE_SPHERE_RADIUS * 0.5;
 
 		if ( controlsInput.touchActive && ( this.inputX !== 0 || this.inputZ !== 0 ) ) {
 			const targetAngle = Math.atan2( this.inputX, this.inputZ );
@@ -168,9 +169,12 @@ export class Vehicle {
 			this.angularSpeed = THREE.MathUtils.lerp( this.angularSpeed, targetAngular, 1 - Math.exp( - steerResponse * dt ) );
 			this.container.rotateY( this.angularSpeed * dt );
 
-			const targetSpeed = this.inputZ >= 0
+			const analogTargetSpeed = this.inputZ >= 0
 				? this.inputZ * MAX_SPEED
 				: this.inputZ * MAX_SPEED * REVERSE_SPEED_SCALE;
+			// AR: no slow ramp on launch. Any deliberate throttle press gives
+			// immediate full forward power; braking/reverse stays progressive.
+			const targetSpeed = miniatureAR && this.inputZ > 0.05 ? MAX_SPEED : analogTargetSpeed;
 
 			if ( this.linearSpeed < 1.0 && targetSpeed > MAX_SPEED * 0.65 && this._launchArmed ) {
 				this.justLaunched = true;
@@ -184,6 +188,8 @@ export class Vehicle {
 				this.linearSpeed = moveTowards( this.linearSpeed, 0, BRAKE_RATE * dt );
 			} else if ( Math.abs( this.inputZ ) <= 0.05 ) {
 				this.linearSpeed = moveTowards( this.linearSpeed, 0, COAST_DECELERATION * dt );
+			} else if ( miniatureAR && this.inputZ > 0.05 ) {
+				this.linearSpeed = MAX_SPEED;
 			} else {
 				const rate = Math.abs( targetSpeed ) < Math.abs( this.linearSpeed ) ? BRAKE_RATE : ACCELERATION_RATE;
 				this.linearSpeed = moveTowards( this.linearSpeed, targetSpeed, rate * dt );
@@ -209,7 +215,7 @@ export class Vehicle {
 			const angvel = this.rigidBody.motionProperties.angularVelocity;
 			const speedRatio = THREE.MathUtils.clamp( Math.abs( this.linearSpeed ) / MAX_SPEED, 0, 1 );
 			const driftLoad = Math.abs( this.inputX ) * speedRatio;
-			const driveResponse = this.handbrake ? 1.8 : THREE.MathUtils.lerp( 8.0, 4.5, driftLoad );
+			const driveResponse = miniatureAR ? 22.0 : ( this.handbrake ? 1.8 : THREE.MathUtils.lerp( 8.0, 4.5, driftLoad ) );
 			const blend = 1 - Math.exp( - driveResponse * dt );
 
 			const targetSpin = this.linearSpeed / BASE_SPHERE_RADIUS;
@@ -323,9 +329,10 @@ export class Vehicle {
 		const run = this.roadRunnerRunBlend, fast = THREE.MathUtils.clamp( ringTarget * run, 0, 1 );
 		this.roadRunnerTime += dt * ( 4 + speed * 36 );
 		const ad = THREE.MathUtils.clamp( ( this.linearSpeed - this.acceleration ) / MAX_SPEED, -.7, .7 ), rubber = ad * .11, bounce = Math.sin( this.roadRunnerTime * .55 ) * .018 * speed;
-		r.scale.x = 2.2 * ( 1 - Math.abs( rubber ) * .35 );
-		r.scale.y = 2.2 * ( 1 - rubber * .32 + bounce );
-		r.scale.z = 2.2 * ( 1 + rubber * .75 );
+		const rrBaseScale = this.sphereRadius < BASE_SPHERE_RADIUS * 0.5 ? 2.2 : 0.72;
+		r.scale.x = rrBaseScale * ( 1 - Math.abs( rubber ) * .35 );
+		r.scale.y = rrBaseScale * ( 1 - rubber * .32 + bounce );
+		r.scale.z = rrBaseScale * ( 1 + rubber * .75 );
 		let ring = r.getObjectByName( 'road-runner-run-ring' );
 		if ( ! ring && legs ) {
 			ring = new THREE.Group(); ring.name = 'road-runner-run-ring';
