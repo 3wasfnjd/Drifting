@@ -1,48 +1,69 @@
 import * as THREE from 'three';
 
 const MODES = [
-	{ id: 'free', title: 'قيادة حرة', subtitle: 'العصا اليسرى تغيّر حجم السيارة', color: '#00d9b5' },
-	{ id: 'track', title: 'مضمار AR', subtitle: 'مضمار سباق مصغّر', color: '#00aef3' },
-	{ id: 'arena', title: 'حلبة الدرفت', subtitle: 'ساحة دائرية للتفحيط', color: '#ff6a00' },
+	{ id: 'free', title: 'قيادة حرة', subtitle: 'تحرك بحرية في المساحة', badge: 'FREE', color: '#00d9b5' },
+	{ id: 'track', title: 'مضمار AR', subtitle: 'مضمار سباق مصغّر', badge: 'TRACK', color: '#00aef3' },
+	{ id: 'arena', title: 'حلبة الدرفت', subtitle: 'ساحة مفتوحة للتفحيط', badge: 'ARENA', color: '#ff7a1a' },
 ];
+
+function roundedRect( ctx, x, y, width, height, radius ) {
+	const r = Math.min( radius, width / 2, height / 2 );
+	ctx.beginPath();
+	ctx.moveTo( x + r, y );
+	ctx.arcTo( x + width, y, x + width, y + height, r );
+	ctx.arcTo( x + width, y + height, x, y + height, r );
+	ctx.arcTo( x, y + height, x, y, r );
+	ctx.arcTo( x, y, x + width, y, r );
+	ctx.closePath();
+}
 
 function cardTexture( mode ) {
 
 	const canvas = document.createElement( 'canvas' );
-	canvas.width = 768;
-	canvas.height = 460;
+	canvas.width = 720;
+	canvas.height = 420;
 	const ctx = canvas.getContext( '2d' );
+	ctx.clearRect( 0, 0, canvas.width, canvas.height );
 
 	const gradient = ctx.createLinearGradient( 0, 0, canvas.width, canvas.height );
-	gradient.addColorStop( 0, '#172238' );
-	gradient.addColorStop( 1, '#070b13' );
+	gradient.addColorStop( 0, 'rgba(22,31,48,0.96)' );
+	gradient.addColorStop( 1, 'rgba(6,10,17,0.96)' );
+	roundedRect( ctx, 14, 14, canvas.width - 28, canvas.height - 28, 42 );
 	ctx.fillStyle = gradient;
-	ctx.fillRect( 0, 0, canvas.width, canvas.height );
-
-	ctx.strokeStyle = mode.color;
-	ctx.lineWidth = 14;
-	ctx.strokeRect( 12, 12, canvas.width - 24, canvas.height - 24 );
-
-	ctx.fillStyle = mode.color;
-	ctx.beginPath();
-	ctx.arc( canvas.width / 2, 118, 52, 0, Math.PI * 2 );
 	ctx.fill();
+
+	ctx.lineWidth = 6;
+	ctx.strokeStyle = mode.color;
+	ctx.globalAlpha = 0.88;
+	ctx.stroke();
+	ctx.globalAlpha = 1;
 
 	ctx.textAlign = 'center';
 	ctx.direction = 'rtl';
-	ctx.fillStyle = '#ffffff';
-	ctx.font = '700 62px sans-serif';
-	ctx.fillText( mode.title, canvas.width / 2, 260 );
-	ctx.fillStyle = '#b9c7dc';
-	ctx.font = '38px sans-serif';
-	ctx.fillText( mode.subtitle, canvas.width / 2, 335 );
+
 	ctx.fillStyle = mode.color;
-	ctx.font = '700 30px sans-serif';
-	ctx.fillText( 'اضغط الزناد للاختيار', canvas.width / 2, 405 );
+	ctx.font = '700 28px sans-serif';
+	ctx.fillText( mode.badge, canvas.width / 2, 78 );
+
+	ctx.fillStyle = '#ffffff';
+	ctx.font = '700 58px sans-serif';
+	ctx.fillText( mode.title, canvas.width / 2, 190 );
+
+	ctx.fillStyle = '#aebbd0';
+	ctx.font = '34px sans-serif';
+	ctx.fillText( mode.subtitle, canvas.width / 2, 258 );
+
+	ctx.fillStyle = 'rgba(255,255,255,0.08)';
+	roundedRect( ctx, 175, 310, 370, 62, 31 );
+	ctx.fill();
+	ctx.fillStyle = '#eef5ff';
+	ctx.font = '700 26px sans-serif';
+	ctx.fillText( 'الزناد للاختيار', canvas.width / 2, 351 );
 
 	const texture = new THREE.CanvasTexture( canvas );
 	texture.colorSpace = THREE.SRGBColorSpace;
 	texture.anisotropy = 4;
+	texture.needsUpdate = true;
 	return texture;
 
 }
@@ -64,19 +85,29 @@ export class ARModeMenu {
 		this.controllerQuaternion = new THREE.Quaternion();
 
 		const panel = new THREE.Mesh(
-			new THREE.PlaneGeometry( 2.85, 1.18 ),
-			new THREE.MeshBasicMaterial( { color: 0x050812, transparent: true, opacity: 0.84, side: THREE.DoubleSide } )
+			new THREE.PlaneGeometry( 2.15, 0.78 ),
+			new THREE.MeshBasicMaterial( {
+				color: 0x050812,
+				transparent: true,
+				opacity: 0.58,
+				side: THREE.DoubleSide,
+				depthWrite: false,
+			} )
 		);
-		panel.position.z = -0.035;
+		panel.position.z = -0.025;
 		this.group.add( panel );
 
 		MODES.forEach( ( mode, index ) => {
 
-			const material = new THREE.MeshBasicMaterial( { map: cardTexture( mode ), side: THREE.DoubleSide } );
-			const card = new THREE.Mesh( new THREE.PlaneGeometry( 0.82, 0.52 ), material );
-			card.position.set( ( index - 1 ) * 0.92, -0.04, 0 );
+			const material = new THREE.MeshBasicMaterial( {
+				map: cardTexture( mode ),
+				transparent: true,
+				side: THREE.DoubleSide,
+				depthWrite: false,
+			} );
+			const card = new THREE.Mesh( new THREE.PlaneGeometry( 0.62, 0.36 ), material );
+			card.position.set( ( index - 1 ) * 0.70, -0.015, 0 );
 			card.userData.arMode = mode.id;
-			card.userData.baseScale = 1;
 			this.cards.push( card );
 			this.group.add( card );
 
@@ -109,8 +140,10 @@ export class ARModeMenu {
 		const position = new THREE.Vector3().setFromMatrixPosition( camera.matrixWorld );
 		const quaternion = camera.getWorldQuaternion( new THREE.Quaternion() );
 		const forward = new THREE.Vector3( 0, 0, -1 ).applyQuaternion( quaternion );
+		const down = new THREE.Vector3( 0, -0.08, 0 );
 
-		this.group.position.copy( position ).addScaledVector( forward, 1.65 );
+		// Comfortable XR viewing distance: smaller cards, farther from the face.
+		this.group.position.copy( position ).addScaledVector( forward, 2.15 ).add( down );
 		this.group.quaternion.copy( quaternion );
 		this.placed = true;
 
@@ -145,8 +178,8 @@ export class ARModeMenu {
 
 		for ( const card of this.cards ) {
 
-			const target = card === hovered ? 1.1 : 1;
-			card.scale.lerp( new THREE.Vector3( target, target, target ), 0.22 );
+			const target = card === hovered ? 1.06 : 1;
+			card.scale.lerp( new THREE.Vector3( target, target, target ), 0.18 );
 
 		}
 
