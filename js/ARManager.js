@@ -31,9 +31,9 @@ export class ARManager {
 	getSpawnWorld(){const yaw=new THREE.Euler().setFromQuaternion(this.arQuaternion,'YXZ').y;const position=this.arPosition.clone();position.y+=this.spawnHeight;return{position,angle:yaw}}
 	getVehicleScaleInput(){const axesL=this.gamepads.left?this.gamepads.left.axes:[];return-this._axis(axesL,3)}
 
-	// Match Hajwala's Quest driving layout exactly:
-	// right stick = steering, right trigger/grip = throttle,
-	// left trigger = brake/reverse, left thumbstick click = handbrake.
+	// Same driving layout as Hajwala, with trigger calibration so Quest can
+	// reliably reach 100% throttle/brake even when the reported analog value
+	// tops out slightly below 1.0 on a controller/browser combination.
 	getDriveInput(){
 		const axesR=this.gamepads.right?this.gamepads.right.axes:[];
 		const x=this._axis(axesR,2);
@@ -41,7 +41,10 @@ export class ARManager {
 		const rGrip=this.gamepads.right?.buttons?.[1]?.value||0;
 		const lTrig=this.gamepads.left?.buttons?.[0]?.value||0;
 		const leftStickClick=Boolean(this.gamepads.left?.buttons?.[3]?.pressed);
-		const z=Math.max(rTrig,rGrip)-lTrig;
+		const normalizePedal=value=>value<.04?0:Math.min(1,value/.82);
+		const throttle=normalizePedal(Math.max(rTrig,rGrip));
+		const brake=normalizePedal(lTrig);
+		const z=THREE.MathUtils.clamp(throttle-brake,-1,1);
 		return{x,z,touchActive:false,handbrake:leftStickClick};
 	}
 
