@@ -30,6 +30,20 @@ export class ARManager {
 	isPlaced(){return this.placed}
 	getSpawnWorld(){const yaw=new THREE.Euler().setFromQuaternion(this.arQuaternion,'YXZ').y;const position=this.arPosition.clone();position.y+=this.spawnHeight;return{position,angle:yaw}}
 	getVehicleScaleInput(){const axesL=this.gamepads.left?this.gamepads.left.axes:[];return-this._axis(axesL,3)}
-	getDriveInput(){const axesR=this.gamepads.right?this.gamepads.right.axes:[];const x=this._axis(axesR,2);const rTrig=this.gamepads.right?.buttons?.[0]?.value||0;const rGrip=this.gamepads.right?.buttons?.[1]?.value||0;const lTrig=this.gamepads.left?.buttons?.[0]?.value||0;const handbrake=Boolean(this.gamepads.left?.buttons?.[1]?.pressed);const z=Math.max(rTrig,rGrip)-lTrig;return{x,z,touchActive:false,handbrake}}
+
+	// Match Hajwala's Quest driving layout exactly:
+	// right stick = steering, right trigger/grip = throttle,
+	// left trigger = brake/reverse, left thumbstick click = handbrake.
+	getDriveInput(){
+		const axesR=this.gamepads.right?this.gamepads.right.axes:[];
+		const x=this._axis(axesR,2);
+		const rTrig=this.gamepads.right?.buttons?.[0]?.value||0;
+		const rGrip=this.gamepads.right?.buttons?.[1]?.value||0;
+		const lTrig=this.gamepads.left?.buttons?.[0]?.value||0;
+		const leftStickClick=Boolean(this.gamepads.left?.buttons?.[3]?.pressed);
+		const z=Math.max(rTrig,rGrip)-lTrig;
+		return{x,z,touchActive:false,handbrake:leftStickClick};
+	}
+
 	_onSessionEnd(){this.session=null;this.hitTestSource=null;this.hitTestSourceRequested=false;if(this._savedBackground!==null)this.scene.background=this._savedBackground;this.scene.fog=this._savedFog;this.previewGroup.visible=false}
 }
