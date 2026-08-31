@@ -98,7 +98,6 @@ export class Vehicle {
 			else if ( targetSpeed < 0 ) this.linearSpeed = THREE.MathUtils.lerp( this.linearSpeed, targetSpeed / 2, dt * 2 );
 			else this.linearSpeed = THREE.MathUtils.lerp( this.linearSpeed, targetSpeed * MAX_SPEED, dt * 1.5 );
 		}
-
 		_tmpVec.set( 0, 1, 0 ).applyQuaternion( this.container.quaternion );
 		if ( _tmpVec.y > 0.5 ) {
 			const targetQuat = this.alignWithY( this.container.quaternion, _up );
@@ -169,7 +168,6 @@ export class Vehicle {
 	updateRoadRunner( dt ) {
 		const roadRunner = this.container.getObjectByName( 'road-runner-free-ar' );
 		if ( ! roadRunner || ! roadRunner.visible ) return;
-
 		const bodyTail = roadRunner.getObjectByName( 'Object_2' );
 		const legs = roadRunner.getObjectByName( 'Object_3' );
 		const eyes = roadRunner.getObjectByName( 'Object_4' );
@@ -180,20 +178,22 @@ export class Vehicle {
 		}
 
 		const speed = THREE.MathUtils.clamp( Math.abs( this.linearSpeed ) / MAX_SPEED, 0, 1 );
-		const moving = THREE.MathUtils.smoothstep( speed, 0.12, 0.48 );
-		this.roadRunnerRunBlend = THREE.MathUtils.lerp( this.roadRunnerRunBlend, moving, 1 - Math.exp( - dt * 9 ) );
+		const legCycleTarget = THREE.MathUtils.smoothstep( speed, 0.08, 0.42 );
+		const speedRingTarget = THREE.MathUtils.smoothstep( speed, 0.42, 0.82 );
+		this.roadRunnerRunBlend = THREE.MathUtils.lerp( this.roadRunnerRunBlend, legCycleTarget, 1 - Math.exp( - dt * 6.5 ) );
 		const runBlend = this.roadRunnerRunBlend;
-		this.roadRunnerTime += dt * ( 5 + speed * 34 );
+		const speedBlend = THREE.MathUtils.clamp( speedRingTarget * runBlend, 0, 1 );
+		this.roadRunnerTime += dt * ( 4 + speed * 36 );
 
-		// Keep the enlarged inspection size, then add mild squash-and-stretch around it.
+		// Double the previous visual size again: 1.1 -> 2.2, while retaining soft squash/stretch.
 		const accelDelta = THREE.MathUtils.clamp( this.linearSpeed - this.acceleration, -0.7, 0.7 );
 		const rubber = accelDelta * 0.11;
 		const bounce = Math.sin( this.roadRunnerTime * 0.55 ) * 0.018 * speed;
-		roadRunner.scale.x = 1.1 * ( 1 - Math.abs( rubber ) * 0.35 );
-		roadRunner.scale.y = 1.1 * ( 1 - rubber * 0.32 + bounce );
-		roadRunner.scale.z = 1.1 * ( 1 + rubber * 0.75 );
+		roadRunner.scale.x = 2.2 * ( 1 - Math.abs( rubber ) * 0.35 );
+		roadRunner.scale.y = 2.2 * ( 1 - rubber * 0.32 + bounce );
+		roadRunner.scale.z = 2.2 * ( 1 + rubber * 0.75 );
 
-		// Build a stylised spinning leg ring once. It fades in with speed and disappears at rest.
+		// Two-stage transition: real feet -> circular leg cycle -> high-speed streak rings.
 		let runRing = roadRunner.getObjectByName( 'road-runner-run-ring' );
 		if ( ! runRing && legs ) {
 			runRing = new THREE.Group();
@@ -202,35 +202,57 @@ export class Vehicle {
 			const legSize = legBox.getSize( new THREE.Vector3() );
 			const radius = Math.max( 0.18, Math.max( legSize.y, legSize.z ) * 0.55 );
 			const tube = Math.max( 0.018, radius * 0.065 );
-			const material = new THREE.MeshStandardMaterial( { color: 0xb05b24, roughness: 0.72, metalness: 0, transparent: true, opacity: 0 } );
+			const legMaterial = new THREE.MeshStandardMaterial( { color: 0xb05b24, roughness: 0.72, metalness: 0, transparent: true, opacity: 0 } );
+			const speedMaterial = new THREE.MeshBasicMaterial( { color: 0xc77837, transparent: true, opacity: 0, depthWrite: false } );
+			const legGroup = new THREE.Group();
+			legGroup.name = 'road-runner-leg-cycle';
 			for ( let i = 0; i < 4; i ++ ) {
-				const ring = new THREE.Mesh( new THREE.TorusGeometry( radius * ( 0.86 + i * 0.055 ), tube, 6, 48 ), material.clone() );
+				const ring = new THREE.Mesh( new THREE.TorusGeometry( radius * ( 0.84 + i * 0.06 ), tube, 6, 48 ), legMaterial.clone() );
 				ring.rotation.y = Math.PI / 2;
-				ring.rotation.z = ( i - 1.5 ) * 0.045;
-				ring.castShadow = true;
-				runRing.add( ring );
+				ring.rotation.z = -0.20 + ( i - 1.5 ) * 0.035;
+				legGroup.add( ring );
 			}
+			const speedGroup = new THREE.Group();
+			speedGroup.name = 'road-runner-speed-cycle';
+			for ( let i = 0; i < 5; i ++ ) {
+				const ring = new THREE.Mesh( new THREE.TorusGeometry( radius * ( 0.90 + i * 0.045 ), tube * 0.58, 5, 64 ), speedMaterial.clone() );
+				ring.rotation.y = Math.PI / 2;
+				ring.rotation.z = -0.30 + ( i - 2 ) * 0.025;
+				ring.scale.y = 0.82;
+				speedGroup.add( ring );
+			}
+			runRing.add( legGroup, speedGroup );
 			runRing.position.copy( legs.position );
+			runRing.rotation.z = -0.18;
 			roadRunner.add( runRing );
 		}
 		if ( runRing ) {
-			runRing.visible = runBlend > 0.015;
-			runRing.rotation.x -= dt * ( 5 + speed * 28 ) * Math.sign( this.linearSpeed || 1 );
-			runRing.scale.set( 0.72 + runBlend * 0.36, 0.78 + runBlend * 0.28, 1 );
-			for ( const child of runRing.children ) if ( child.material ) child.material.opacity = runBlend * 0.86;
+			const legGroup = runRing.getObjectByName( 'road-runner-leg-cycle' );
+			const speedGroup = runRing.getObjectByName( 'road-runner-speed-cycle' );
+			runRing.visible = runBlend > 0.01;
+			runRing.rotation.x -= dt * ( 4 + speed * 31 ) * Math.sign( this.linearSpeed || 1 );
+			runRing.rotation.z = THREE.MathUtils.lerp( runRing.rotation.z, -0.18 - speed * 0.10, Math.min( 1, dt * 5 ) );
+			runRing.scale.set( 0.68 + runBlend * 0.38, 0.72 + runBlend * 0.34, 1 );
+			if ( legGroup ) {
+				const opacity = runBlend * ( 1 - speedBlend * 0.55 ) * 0.9;
+				for ( const child of legGroup.children ) child.material.opacity = opacity;
+			}
+			if ( speedGroup ) {
+				const opacity = speedBlend * 0.78;
+				speedGroup.rotation.x -= dt * speed * 18;
+				for ( const child of speedGroup.children ) child.material.opacity = opacity;
+			}
 		}
 
-		// Original feet remain fully visible at rest and smoothly disappear into the circular run effect.
 		if ( legs?.userData.roadRunnerBase ) {
 			const base = legs.userData.roadRunnerBase;
+			const feetFade = THREE.MathUtils.smoothstep( runBlend, 0.05, 0.72 );
 			legs.position.copy( base.position );
 			legs.rotation.copy( base.rotation );
-			legs.scale.copy( base.scale );
-			legs.scale.multiplyScalar( Math.max( 0.06, 1 - runBlend * 0.94 ) );
-			legs.position.y = base.position.y + runBlend * 0.02;
+			legs.scale.copy( base.scale ).multiplyScalar( Math.max( 0.04, 1 - feetFade * 0.96 ) );
+			legs.position.y = base.position.y + feetFade * 0.018;
 		}
 
-		// Tail/body behaves like a soft follow-through mass: trails on launch and rebounds while stopping/turning.
 		if ( bodyTail?.userData.roadRunnerBase ) {
 			const base = bodyTail.userData.roadRunnerBase;
 			const flutter = Math.sin( this.roadRunnerTime * 1.25 ) * ( 0.012 + speed * 0.045 );
@@ -238,15 +260,12 @@ export class Vehicle {
 			bodyTail.rotation.z = lerpAngle( bodyTail.rotation.z, base.rotation.z - this.inputX * speed * 0.16 + flutter * 0.5, Math.min( 1, dt * 7 ) );
 			bodyTail.position.z = THREE.MathUtils.lerp( bodyTail.position.z, base.position.z - accelDelta * 0.07, Math.min( 1, dt * 6 ) );
 		}
-
 		if ( head?.userData.roadRunnerBase ) {
 			const base = head.userData.roadRunnerBase;
 			head.rotation.x = lerpAngle( head.rotation.x, base.rotation.x - accelDelta * 0.13 + Math.sin( this.roadRunnerTime * 0.5 ) * 0.018, Math.min( 1, dt * 8 ) );
 			head.rotation.z = lerpAngle( head.rotation.z, base.rotation.z + this.inputX * speed * 0.15, Math.min( 1, dt * 8 ) );
 			head.position.y = THREE.MathUtils.lerp( head.position.y, base.position.y + Math.sin( this.roadRunnerTime * 0.65 ) * ( 0.006 + speed * 0.014 ), Math.min( 1, dt * 8 ) );
 		}
-
-		// Blink closes downward instead of crushing through the head: scale + pivot compensation.
 		if ( eyes?.userData.roadRunnerBase ) {
 			const base = eyes.userData.roadRunnerBase;
 			this.roadRunnerBlinkTimer -= dt;
