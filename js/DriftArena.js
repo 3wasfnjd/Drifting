@@ -46,14 +46,14 @@ export function buildDriftArena( models ) {
 
 	}
 
-	// Stadium-style floodlight towers are decorative meshes only. They do not
-	// create real lights or glowing materials, keeping AR rendering inexpensive.
+	// Keep floodlights close to the arena wall so the drift area stays open.
 	const lampHousing = new THREE.MeshStandardMaterial( { color: 0xd7dce2, roughness: 0.72, metalness: 0.12 } );
+	const floodlightRadius = DRIFT_ARENA_RADIUS - 3.2;
 	for ( let i = 0; i < 4; i ++ ) {
 
 		const angle = Math.PI / 4 + i * Math.PI / 2;
-		const x = Math.cos( angle ) * 14.5;
-		const z = Math.sin( angle ) * 14.5;
+		const x = Math.cos( angle ) * floodlightRadius;
+		const z = Math.sin( angle ) * floodlightRadius;
 		const tower = new THREE.Group();
 		tower.position.set( x, 0, z );
 		tower.rotation.y = - angle - Math.PI / 2;
@@ -61,8 +61,6 @@ export function buildDriftArena( models ) {
 
 		mesh( new THREE.CylinderGeometry( 0.13, 0.2, 5.8, 8 ), metal, tower, [ 0, 2.9, 0 ] );
 
-		// Tyres sit around the base of each floodlight column instead of
-		// obstructing the middle of the drift arena.
 		for ( let level = 0; level < 3; level ++ ) {
 
 			const tyre = mesh( new THREE.TorusGeometry( 0.48, 0.18, 10, 24 ), tireMat, tower, [ 0, 0.2 + level * 0.28, 0 ] );
@@ -89,11 +87,12 @@ export function buildDriftArena( models ) {
 
 	}
 
-	// Parked display cars use models already shipped with the game.
+	// Parked display cars sit along the back perimeter instead of the center.
+	const parkedZ = - ( DRIFT_ARENA_RADIUS - 4.0 );
 	const parked = [
-		[ 'vehicle-truck-green', -10, 0, -12, 0.55 ],
-		[ 'vehicle-truck-purple', 0, 0, -15, 0 ],
-		[ 'vehicle-truck-red', 10, 0, -12, -0.55 ],
+		[ 'vehicle-truck-green', -12, 0, parkedZ, 0.18 ],
+		[ 'vehicle-truck-purple', 0, 0, parkedZ - 0.4, 0 ],
+		[ 'vehicle-truck-red', 12, 0, parkedZ, -0.18 ],
 	];
 	for ( const [ key, x, y, z, rotation ] of parked ) {
 
