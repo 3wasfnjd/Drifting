@@ -9,6 +9,10 @@ const _newZ = new THREE.Vector3();
 const _mat4 = new THREE.Matrix4();
 const _quat = new THREE.Quaternion();
 const _up = new THREE.Vector3( 0, 1, 0 );
+const _rrDeltaQuat = new THREE.Quaternion();
+const _rrBaseHeadQuat = new THREE.Quaternion();
+const _rrEyeQuat = new THREE.Quaternion();
+const _rrEyeOffset = new THREE.Vector3();
 
 const LINEAR_DAMP = 0.1;
 export const MAX_SPEED = 1.5;
@@ -290,12 +294,17 @@ export class Vehicle {
 			head.position.y = THREE.MathUtils.lerp( head.position.y, base.position.y + Math.sin( this.roadRunnerTime * 0.65 ) * ( 0.006 + speed * 0.014 ), Math.min( 1, dt * 8 ) );
 		}
 
-		// Eye animation disabled: keep the original eye transform fixed.
-		if ( eyes?.userData.roadRunnerBase ) {
-			const base = eyes.userData.roadRunnerBase;
-			eyes.position.copy( base.position );
-			eyes.rotation.copy( base.rotation );
-			eyes.scale.copy( base.scale );
+		// Eyes have no independent animation. They inherit the head's local motion.
+		if ( eyes?.userData.roadRunnerBase && head?.userData.roadRunnerBase ) {
+			const eyeBase = eyes.userData.roadRunnerBase;
+			const headBase = head.userData.roadRunnerBase;
+			_rrBaseHeadQuat.setFromEuler( headBase.rotation );
+			_rrDeltaQuat.copy( head.quaternion ).multiply( _rrBaseHeadQuat.invert() );
+			_rrEyeOffset.subVectors( eyeBase.position, headBase.position ).applyQuaternion( _rrDeltaQuat );
+			eyes.position.copy( head.position ).add( _rrEyeOffset );
+			_rrEyeQuat.setFromEuler( eyeBase.rotation ).premultiply( _rrDeltaQuat );
+			eyes.quaternion.copy( _rrEyeQuat );
+			eyes.scale.copy( eyeBase.scale );
 		}
 	}
 }
