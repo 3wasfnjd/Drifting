@@ -197,10 +197,6 @@ export class Vehicle {
 			const vel = this.rigidBody.motionProperties.linearVelocity;
 			this.sphereVel.set( vel[0], vel[1], vel[2] );
 
-			// Real drift layer: keep the body's momentum while the nose rotates.
-			// Lateral tyre grip is strong in a mild turn, progressively releases in
-			// a hard turn, and releases much more with the handbrake. This produces
-			// an actual sideways trajectory instead of rotating the model in place.
 			const scaleRatio = Math.max( this.sphereRadius / BASE_SPHERE_RADIUS, 0.001 );
 			const horizontalSpeed = Math.hypot( this.sphereVel.x, this.sphereVel.z ) / scaleRatio;
 			const speedFactor = THREE.MathUtils.smoothstep( horizontalSpeed, 0.18, 1.15 );
@@ -210,12 +206,8 @@ export class Vehicle {
 			const normalGrip = THREE.MathUtils.lerp( 9.0, 2.4, hardTurn * speedFactor );
 			const lateralGrip = this.handbrake ? THREE.MathUtils.lerp( 1.15, 0.38, speedFactor ) : normalGrip;
 			lateralVel *= Math.exp( -lateralGrip * dt );
-
-			// A small rear-end breakaway under a hard steer makes initiation feel
-			// like a car losing rear grip rather than a perfectly circular turn.
 			const breakaway = ( this.handbrake ? 0.72 : 0.24 ) * hardTurn * speedFactor * Math.abs( forwardVel );
 			lateralVel += -Math.sign( this.inputX || 0 ) * breakaway * dt;
-
 			const correctedX = _forward.x * forwardVel + _right.x * lateralVel;
 			const correctedZ = _forward.z * forwardVel + _right.z * lateralVel;
 			rigidBody.setLinearVelocity( this.physicsWorld, this.rigidBody, [ correctedX, vel[1], correctedZ ] );
@@ -313,15 +305,82 @@ export class Vehicle {
 		const legs = r.getObjectByName( 'Object_3' );
 		const head = r.getObjectByName( 'Object_5' );
 		const speed = THREE.MathUtils.clamp( Math.abs( this.linearSpeed ) / ROAD_RUNNER_MAX_SPEED, 0, 1 );
-		this.roadRunnerRunBlend = THREE.MathUtils.lerp( this.roadRunnerRunBlend, THREE.MathUtils.smoothstep( speed, .07, .4 ), 1 - Math.exp( -dt * 6.5 ) );
-		this.roadRunnerTime += dt * ( 5 + speed * 30 );
+		const legTarget = THREE.MathUtils.smoothstep( speed, 0.06, 0.36 );
+		const speedTarget = THREE.MathUtils.smoothstep( speed, 0.42, 0.78 );
+		this.roadRunnerRunBlend = THREE.MathUtils.lerp( this.roadRunnerRunBlend, legTarget, 1 - Math.exp( -dt * 7 ) );
+		this.roadRunnerTime += dt * ( 5 + speed * 34 );
 		const run = this.roadRunnerRunBlend;
-		if ( legs ) {
-			if ( ! legs.userData.rrBase ) legs.userData.rrBase = { p: legs.position.clone(), s: legs.scale.clone() };
+		const fast = THREE.MathUtils.clamp( speedTarget * run, 0, 1 );
+
+		if ( legs && ! legs.userData.rrBase ) legs.userData.rrBase = { p: legs.position.clone(), s: legs.scale.clone(), r: legs.rotation.clone() };
+		let ring = r.getObjectByName( 'road-runner-run-ring' );
+		if ( ! ring && legs ) {
+			ring = new THREE.Group();
+			ring.name = 'road-runner-run-ring';
+			const box = new THREE.Box3().setFromObject( legs );
+			const size = box.getSize( new THREE.Vector3() );
+			const radius = Math.max( 0.18, Math.max( size.y, size.z ) * 0.55 );
+			const tube = Math.max( 0.016, radius * 0.055 );
+			const makeLoop = ( scale, material, tubeScale = 1 ) => {
+				const rr = radius * scale;
+				const curve = new THREE.CatmullRomCurve3( [
+					new THREE.Vector3( 0, .50 * rr, -1.16 * rr ),
+					new THREE.Vector3( 0, .76 * rr, -.48 * rr ),
+					new THREE.Vector3( 0, .72 * rr, .42 * rr ),
+					new THREE.Vector3( 0, .42 * rr, 1.08 * rr ),
+					new THREE.Vector3( 0, -.18 * rr, 1.20 * rr ),
+					new THREE.Vector3( 0, -.54 * rr, .48 * rr ),
+					new THREE.Vector3( 0, -.46 * rr, -.56 * rr ),
+					new THREE.Vector3( 0, -.02 * rr, -1.18 * rr )
+				], true, 'centripetal' );
+				return new THREE.Mesh( new THREE.TubeGeometry( curve, 48, tube * tubeScale, 6, true ), material );
+			};
+			const legMat = new THREE.MeshStandardMaterial( { color: 0xb05b24, roughness: .72, transparent: true, opacity: 0 } );
+			const speedMat = new THREE.MeshBasicMaterial( { color: 0xc77837, transparent: true, opacity: 0, depthWrite: false } );
+			const legGroup = new THREE.Group();
+			legGroup.name = 'road-runner-leg-cycle';
+			for ( let i = 0; i < 4; i ++ ) {
+				const loop = makeLoop( .88 + i * .045, legMat.clone(), 1 - i * .06 );
+				loop.position.x = ( i - 1.5 ) * tube * .7;
+				legGroup.add( loop );
+			}
+			const speedGroup = new THREE.Group();
+			speedGroup.name = 'road-runner-speed-cycle';
+			for ( let i = 0; i < 5; i ++ ) {
+				const loop = makeLoop( .98 + i * .035, speedMat.clone(), .52 );
+				loop.position.x = ( i - 2 ) * tube * .55;
+				speedGroup.add( loop );
+			}
+			ring.add( legGroup, speedGroup );
+			ring.position.copy( legs.userData.rrBase.p );
+			r.add( ring );
+		}
+
+		if ( ring ) {
+			const legGroup = ring.getObjectByName( 'road-runner-leg-cycle' );
+			const speedGroup = ring.getObjectByName( 'road-runner-speed-cycle' );
+			ring.visible = run > .01;
+			const pulse = 1 + Math.sin( this.roadRunnerTime * 2.2 ) * .025 * run;
+			ring.scale.set( .70 + run * .36, ( .74 + run * .28 ) * pulse, .92 + fast * .13 );
+			if ( legGroup ) {
+				const opacity = run * ( 1 - fast * .5 ) * .92;
+				legGroup.position.y = Math.sin( this.roadRunnerTime * 2.6 ) * .008 * run;
+				for ( const child of legGroup.children ) child.material.opacity = opacity;
+			}
+			if ( speedGroup ) {
+				const opacity = fast * .86;
+				speedGroup.scale.setScalar( 1 + Math.sin( this.roadRunnerTime * 4.5 ) * .018 * fast );
+				for ( const child of speedGroup.children ) child.material.opacity = opacity;
+			}
+		}
+
+		if ( legs?.userData.rrBase ) {
 			const b = legs.userData.rrBase;
+			const fade = THREE.MathUtils.smoothstep( run, .05, .72 );
 			legs.position.copy( b.p );
-			legs.position.y += Math.sin( this.roadRunnerTime * 2 ) * .012 * run;
-			legs.scale.copy( b.s ).multiplyScalar( 1 - run * .18 );
+			legs.rotation.copy( b.r );
+			legs.scale.copy( b.s ).multiplyScalar( Math.max( .05, 1 - fade * .95 ) );
+			legs.position.y = b.p.y + fade * .018;
 		}
 		if ( bt ) {
 			if ( ! bt.userData.rrBaseRot ) bt.userData.rrBaseRot = bt.rotation.clone();
